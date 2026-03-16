@@ -17,23 +17,9 @@ export class MarketplacePaths {
     return path.join(globalConfigDir(), "kilo.json")
   }
 
-  /** Primary skill install directory (where the marketplace installer writes to). */
+  /** Skill install directory (where the marketplace installer writes to). */
   skillsDir(scope: "project" | "global", workspace?: string): string {
     if (scope === "project") return path.join(workspace!, ".kilo", "skills")
     return path.join(os.homedir(), ".kilo", "skills")
-  }
-
-  /**
-   * All directories where skills may be detected (matching the CLI's scan).
-   *
-   * The CLI scans both `.kilocode/skills/` and `.kilo/skills/` at project
-   * and global scope. Detection must check all of them to accurately reflect
-   * what the CLI considers "installed".
-   */
-  allSkillsDirs(scope: "project" | "global", workspace?: string): string[] {
-    if (scope === "project") {
-      return [path.join(workspace!, ".kilocode", "skills"), path.join(workspace!, ".kilo", "skills")]
-    }
-    return [path.join(os.homedir(), ".kilocode", "skills"), path.join(os.homedir(), ".kilo", "skills")]
   }
 }

@@ -1,5 +1,4 @@
 import * as fs from "fs/promises"
-import * as path from "path"
 import type { MarketplaceInstalledMetadata } from "./types"
 import { MarketplacePaths } from "./paths"
 
@@ -16,64 +15,33 @@ export class InstallationDetector {
   /**
    * Detect installed marketplace items.
    *
-   * MCP servers and modes are detected by reading kilo.json config files.
-   * Skills are detected from CLI data (via `GET /skill`) when available,
-   * which is the authoritative source — the CLI scans .kilocode/, .kilo/,
-   * .claude/, .agents/, .opencode/, config paths, and skill URLs.
-   *
-   * When CLI skills are not available (client not connected), falls back
-   * to a basic filesystem scan of .kilocode/skills/ and .kilo/skills/.
+   * MCP servers and modes are detected from kilo.json config files.
+   * Skills come from the CLI backend (via GET /skill), which is the
+   * authoritative source — it scans all skill directories.
    */
   async detect(workspace?: string, skills?: CliSkill[]): Promise<MarketplaceInstalledMetadata> {
-    const skillEntries = skills ? this.skillsFromCli(skills, workspace) : await this.skillsFromFilesystem(workspace)
-
     const project = workspace
       ? Object.fromEntries([
           ...(await this.detectFromConfig(this.paths.configPath("project", workspace))),
-          ...skillEntries.project,
+          ...this.skillEntries(skills, workspace, true),
         ])
       : {}
 
     const global = Object.fromEntries([
       ...(await this.detectFromConfig(this.paths.configPath("global"))),
-      ...skillEntries.global,
+      ...this.skillEntries(skills, workspace, false),
     ])
 
     return { project, global }
   }
 
-  /**
-   * Derive skill scope from CLI skill data by checking whether the
-   * skill location path is under the workspace directory.
-   */
-  private skillsFromCli(skills: CliSkill[], workspace?: string): { project: Entry[]; global: Entry[] } {
-    const project: Entry[] = []
-    const global: Entry[] = []
-
-    for (const skill of skills) {
-      const entry: Entry = [skill.name, { type: "skill" }]
-      if (workspace && skill.location.startsWith(workspace)) {
-        project.push(entry)
-      } else {
-        global.push(entry)
-      }
-    }
-
-    return { project, global }
-  }
-
-  /**
-   * Fallback: scan .kilocode/skills/ and .kilo/skills/ directories directly.
-   * Used when CLI client is not available.
-   */
-  private async skillsFromFilesystem(workspace?: string): Promise<{ project: Entry[]; global: Entry[] }> {
-    const project = workspace
-      ? (await Promise.all(this.paths.allSkillsDirs("project", workspace).map((d) => this.scanSkillDir(d)))).flat()
-      : []
-
-    const global = (await Promise.all(this.paths.allSkillsDirs("global").map((d) => this.scanSkillDir(d)))).flat()
-
-    return { project, global }
+  private skillEntries(skills: CliSkill[] | undefined, workspace: string | undefined, project: boolean): Entry[] {
+    if (!skills) return []
+    return skills
+      .filter((s) =>
+        project ? workspace && s.location.startsWith(workspace) : !workspace || !s.location.startsWith(workspace),
+      )
+      .map((s) => [s.name, { type: "skill" }])
   }
 
   /** Read mcp and agent entries from a kilo.json config file. */
@@ -99,28 +67,6 @@ export class InstallationDetector {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
         console.warn(`Failed to detect items from ${filepath}:`, err)
-      }
-      return []
-    }
-  }
-
-  private async scanSkillDir(dir: string): Promise<Entry[]> {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true })
-      const results: Entry[] = []
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        try {
-          await fs.access(path.join(dir, entry.name, "SKILL.md"))
-          results.push([entry.name, { type: "skill" }])
-        } catch {
-          console.warn(`Skill directory ${entry.name} missing SKILL.md, skipping`)
-        }
-      }
-      return results
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(`Failed to detect skills from ${dir}:`, err)
       }
       return []
     }
