@@ -350,7 +350,7 @@
         "@kilocode/plugin": "workspace:*",
         "@kilocode/sdk": "workspace:*",
         "@modelcontextprotocol/sdk": "1.25.2",
-        "@morphllm/morphsdk": "0.2.147",
+        "@morphllm/morphsdk": "0.2.148",
         "@octokit/graphql": "9.0.2",
         "@octokit/rest": "catalog:",
         "@openauthjs/openauth": "catalog:",
@@ -4512,7 +4512,7 @@
 
     "@jimp/types/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
-    "@kilocode/cli/@morphllm/morphsdk": ["@morphllm/morphsdk@0.2.147", "", { "dependencies": { "@vscode/ripgrep": "^1.17.0", "ai": ">=5.0.0", "diff": "^7.0.0", "isomorphic-git": "^1.25.10", "openai": "^4.52.7", "zod": ">=3.23.0" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.25.0", "@google/generative-ai": ">=0.21.0" }, "optionalPeers": ["@anthropic-ai/sdk", "@google/generative-ai"] }, "sha512-ogXE5B55pGe/V7JKhbOZycnUzU+KvZCoi1LCMlalKy2tIggXK5kva43ixewUqnu9rVGKGDhU1HiAjQl8RkNcww=="],
+    "@kilocode/cli/@morphllm/morphsdk": ["@morphllm/morphsdk@0.2.148", "", { "dependencies": { "@vscode/ripgrep": "^1.17.0", "ai": ">=5.0.0", "diff": "^7.0.0", "isomorphic-git": "^1.25.10", "openai": "^4.52.7", "zod": ">=3.23.0" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.25.0", "@google/generative-ai": ">=0.21.0" }, "optionalPeers": ["@anthropic-ai/sdk", "@google/generative-ai"] }, "sha512-pIABC+KR9yR567wyBGNhDEjNDR11V2CY6a2caosA5yYTP1Me0freUA4BCIfw71o7YG3I9LU1i+ZG1+vZ0Cv8dw=="],
 
     "@kilocode/kilo-docs/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
