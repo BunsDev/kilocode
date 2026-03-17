@@ -56,18 +56,28 @@ export function appendEntry(entries: string[], text: string, max: number): boole
   return true
 }
 
-/** Seed entries from session messages (chronological, oldest first). Returns whether any were added. */
+/**
+ * Seed entries from session messages (chronological, oldest first).
+ * New entries are inserted after any existing entries (which are newest-first)
+ * but in reverse chronological order so the most recent seeded message is
+ * closest to index 0 among the seeded block.
+ * Returns whether any were added.
+ */
 export function seedEntries(entries: string[], texts: string[], max: number): boolean {
-  let changed = false
+  // Collect new unique entries preserving chronological order
+  const fresh: string[] = []
   for (const raw of texts) {
     const trimmed = raw.trim()
     if (!trimmed) continue
     if (entries.includes(trimmed)) continue
-    entries.push(trimmed)
-    changed = true
+    if (fresh.includes(trimmed)) continue
+    fresh.push(trimmed)
   }
+  if (fresh.length === 0) return false
+  // Reverse so newest message is first, then append after existing entries
+  for (let i = fresh.length - 1; i >= 0; i--) entries.push(fresh[i]!)
   if (entries.length > max) entries.length = max
-  return changed
+  return true
 }
 
 // Module-level: initialized from localStorage, shared across remounts

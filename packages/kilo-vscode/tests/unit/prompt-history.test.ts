@@ -104,9 +104,9 @@ describe("seedEntries", () => {
     entries = []
   })
 
-  it("appends texts in order (oldest first)", () => {
+  it("seeds in reverse chronological order (newest first)", () => {
     seedEntries(entries, ["first", "second", "third"], MAX)
-    expect(entries).toEqual(["first", "second", "third"])
+    expect(entries).toEqual(["third", "second", "first"])
   })
 
   it("skips empty and whitespace-only texts", () => {
@@ -148,6 +148,6 @@ describe("seedEntries", () => {
     appendEntry(entries, "recent", MAX)
     seedEntries(entries, ["old1", "old2"], MAX)
     expect(entries[0]).toBe("recent")
-    expect(entries).toEqual(["recent", "old1", "old2"])
+    expect(entries).toEqual(["recent", "old2", "old1"])
   })
 })

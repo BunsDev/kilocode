@@ -150,6 +150,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setText(draft)
       setGhostText("")
       setReviewComments(pending)
+      history.reset()
       if (textareaRef) {
         textareaRef.value = draft
         // Reset height then adjust
