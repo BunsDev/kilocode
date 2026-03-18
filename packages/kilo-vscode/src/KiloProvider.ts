@@ -467,6 +467,11 @@ export class KiloProvider implements vscode.WebviewViewProvider, TelemetryProper
         case "removeMode":
           this.handleRemoveMode(message.name).catch((e) => console.error("[Kilo New] handleRemoveMode failed:", e))
           break
+        case "saveCustomMode":
+          this.handleSaveCustomMode(message.name, message.config).catch((e) =>
+            console.error("[Kilo New] handleSaveCustomMode failed:", e),
+          )
+          break
         case "questionReply":
           await this.handleQuestionReply(message.requestID, message.answers)
           break
@@ -1288,6 +1293,48 @@ export class KiloProvider implements vscode.WebviewViewProvider, TelemetryProper
 
     this.cachedAgentsMessage = null
     await this.fetchAndSendAgents()
+  }
+
+  /**
+   * Save a custom mode by writing its agent config to kilo.json (global scope).
+   * Uses the config update API so the CLI backend picks up the change.
+   */
+  private async handleSaveCustomMode(
+    name: string,
+    cfg: { description?: string; prompt?: string; mode?: string },
+  ): Promise<void> {
+    if (!this.client || this.connectionState !== "connected") {
+      this.postMessage({ type: "error", message: "Not connected to CLI backend" })
+      return
+    }
+
+    try {
+      const entry: Record<string, unknown> = {
+        mode: cfg.mode ?? "primary",
+      }
+      if (cfg.description) entry.description = cfg.description
+      if (cfg.prompt !== undefined) entry.prompt = cfg.prompt
+
+      const { data: updated } = await this.client.global.config.update(
+        { config: { agent: { [name]: entry } } },
+        { throwOnError: true },
+      )
+
+      const message = { type: "configUpdated", config: updated }
+      this.cachedConfigMessage = { type: "configLoaded", config: updated }
+      this.postMessage(message)
+
+      // Dispose + re-fetch so the CLI backend registers the new/updated agent
+      await this.disposeCliInstance("global")
+      this.cachedAgentsMessage = null
+      await this.fetchAndSendAgents()
+    } catch (error) {
+      console.error("[Kilo New] KiloProvider: Failed to save custom mode:", error)
+      this.postMessage({
+        type: "error",
+        message: getErrorMessage(error) || "Failed to save custom mode",
+      })
+    }
   }
 
   /**

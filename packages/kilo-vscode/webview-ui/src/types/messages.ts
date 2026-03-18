@@ -1362,6 +1362,18 @@ export interface RemoveModeMessage {
   name: string
 }
 
+export interface CustomModeConfig {
+  description?: string
+  prompt?: string
+  mode?: "primary" | "subagent" | "all"
+}
+
+export interface SaveCustomModeMessage {
+  type: "saveCustomMode"
+  name: string
+  config: CustomModeConfig
+}
+
 export interface SetLanguageRequest {
   type: "setLanguage"
   locale: string
@@ -1753,6 +1765,7 @@ export type WebviewMessage =
   | RequestSkillsMessage
   | RemoveSkillMessage
   | RemoveModeMessage
+  | SaveCustomModeMessage
   | SetLanguageRequest
   | QuestionReplyRequest
   | QuestionRejectRequest

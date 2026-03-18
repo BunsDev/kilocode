@@ -10,7 +10,7 @@ import { useDialog } from "@kilocode/kilo-ui/context/dialog"
 import { useConfig } from "../../context/config"
 import { useSession } from "../../context/session"
 import { useLanguage } from "../../context/language"
-import type { AgentConfig, AgentInfo, SkillInfo } from "../../types/messages"
+import type { AgentConfig, AgentInfo, CustomModeConfig, SkillInfo } from "../../types/messages"
 
 type SubtabId = "agents" | "mcpServers" | "rules" | "workflows" | "skills"
 
@@ -59,6 +59,68 @@ const AgentBehaviourTab: Component = () => {
   const [newSkillPath, setNewSkillPath] = createSignal("")
   const [newSkillUrl, setNewSkillUrl] = createSignal("")
   const [newInstruction, setNewInstruction] = createSignal("")
+
+  // Custom mode create/edit state
+  const [editing, setEditing] = createSignal<string | null>(null) // name of mode being edited, or null
+  const [creating, setCreating] = createSignal(false)
+  const [modeName, setModeName] = createSignal("")
+  const [modeDescription, setModeDescription] = createSignal("")
+  const [modePrompt, setModePrompt] = createSignal("")
+  const [nameError, setNameError] = createSignal<string | null>(null)
+
+  const NAME_PATTERN = /^[a-z][a-z0-9-]*$/
+
+  const validateName = (name: string): string | null => {
+    if (!name.trim()) return language.t("settings.agentBehaviour.modeNameRequired")
+    if (!NAME_PATTERN.test(name)) return language.t("settings.agentBehaviour.modeNameInvalid")
+    if (creating() && session.agents().some((a) => a.name === name)) {
+      return language.t("settings.agentBehaviour.modeNameExists")
+    }
+    return null
+  }
+
+  const startCreate = () => {
+    setEditing(null)
+    setCreating(true)
+    setModeName("")
+    setModeDescription("")
+    setModePrompt("")
+    setNameError(null)
+  }
+
+  const startEdit = (agent: AgentInfo) => {
+    setCreating(false)
+    setEditing(agent.name)
+    setModeName(agent.name)
+    setModeDescription(agent.description ?? "")
+    const cfg = config().agent?.[agent.name]
+    setModePrompt(cfg?.prompt ?? "")
+    setNameError(null)
+  }
+
+  const cancelEdit = () => {
+    setEditing(null)
+    setCreating(false)
+    setNameError(null)
+  }
+
+  const handleSave = () => {
+    const name = modeName().trim()
+    const error = validateName(name)
+    if (error) {
+      setNameError(error)
+      return
+    }
+    const cfg: CustomModeConfig = {
+      description: modeDescription().trim() || undefined,
+      prompt: modePrompt().trim() || undefined,
+      mode: "primary",
+    }
+    session.saveMode(name, cfg)
+    setEditing(null)
+    setCreating(false)
+    setNameError(null)
+  }
 
   // Fetch skills whenever the skills subtab becomes active
   createEffect(() => {
@@ -381,42 +443,193 @@ const AgentBehaviourTab: Component = () => {
         </Card>
       </Show>
 
-      {/* Available modes (non-native only, with remove button) */}
-      <Show when={removableModes().length > 0}>
-        <h4 style={{ "margin-top": "16px", "margin-bottom": "8px" }}>
-          {language.t("settings.agentBehaviour.availableModes")}
-        </h4>
+      {/* Custom modes section */}
+      <hr
+        style={{
+          border: "none",
+          "border-top": "1px solid var(--border-weak-base)",
+          margin: "16px 0",
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
+          "margin-bottom": "8px",
+        }}
+      >
+        <div data-slot="settings-row-label-title">{language.t("settings.agentBehaviour.availableModes")}</div>
+        <Button variant="secondary" size="small" onClick={startCreate}>
+          {language.t("settings.agentBehaviour.createMode")}
+        </Button>
+      </div>
+
+      {/* Create mode form */}
+      <Show when={creating()}>
+        <Card style={{ "margin-bottom": "12px" }}>
+          <SettingsRow
+            title={language.t("settings.agentBehaviour.modeName")}
+            description={language.t("settings.agentBehaviour.modeName.description")}
+          >
+            <TextField
+              value={modeName()}
+              placeholder={language.t("settings.agentBehaviour.modeName.placeholder")}
+              onChange={(val) => {
+                setModeName(val)
+                setNameError(null)
+              }}
+            />
+          </SettingsRow>
+          <Show when={nameError()}>
+            <div
+              style={{
+                color: "var(--vscode-errorForeground, #f44)",
+                "font-size": "12px",
+                "margin-bottom": "8px",
+                "margin-top": "-4px",
+              }}
+            >
+              {nameError()}
+            </div>
+          </Show>
+          <SettingsRow
+            title={language.t("settings.agentBehaviour.modeDescription")}
+            description={language.t("settings.agentBehaviour.modeDescription.description")}
+          >
+            <TextField
+              value={modeDescription()}
+              placeholder={language.t("settings.agentBehaviour.modeDescription.placeholder")}
+              onChange={(val) => setModeDescription(val)}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={language.t("settings.agentBehaviour.modePrompt")}
+            description={language.t("settings.agentBehaviour.modePrompt.description")}
+            last
+          >
+            <TextField
+              value={modePrompt()}
+              placeholder={language.t("settings.agentBehaviour.modePrompt.placeholder")}
+              multiline
+              onChange={(val) => setModePrompt(val)}
+            />
+          </SettingsRow>
+          <div style={{ display: "flex", gap: "8px", "justify-content": "flex-end", "margin-top": "8px" }}>
+            <Button variant="ghost" size="small" onClick={cancelEdit}>
+              {language.t("common.cancel")}
+            </Button>
+            <Button variant="primary" size="small" onClick={handleSave}>
+              {language.t("settings.agentBehaviour.modeCreate")}
+            </Button>
+          </div>
+        </Card>
+      </Show>
+
+      {/* Existing custom modes list */}
+      <Show
+        when={removableModes().length > 0}
+        fallback={
+          <Show when={!creating()}>
+            <Card>
+              <div
+                style={{
+                  "font-size": "12px",
+                  color: "var(--text-weak-base, var(--vscode-descriptionForeground))",
+                }}
+              >
+                {language.t("settings.agentBehaviour.noModesFound")}
+              </div>
+            </Card>
+          </Show>
+        }
+      >
         <Card>
           <For each={removableModes()}>
             {(agent, index) => (
               <div
                 style={{
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "space-between",
                   padding: "8px 0",
                   "border-bottom": index() < removableModes().length - 1 ? "1px solid var(--border-weak-base)" : "none",
                 }}
               >
-                <div style={{ flex: 1, "min-width": 0 }}>
-                  <div data-slot="settings-row-label-title" style={{ "margin-bottom": "0" }}>
-                    {agent.name}
-                  </div>
-                  <Show when={agent.description}>
-                    <div data-slot="settings-row-label-subtitle" style={{ "margin-top": "4px" }}>
-                      {agent.description}
+                <Show
+                  when={editing() === agent.name}
+                  fallback={
+                    <div
+                      style={{
+                        display: "flex",
+                        "align-items": "center",
+                        "justify-content": "space-between",
+                      }}
+                    >
+                      <div style={{ flex: 1, "min-width": 0 }}>
+                        <div data-slot="settings-row-label-title" style={{ "margin-bottom": "0" }}>
+                          {agent.name}
+                        </div>
+                        <Show when={agent.description}>
+                          <div data-slot="settings-row-label-subtitle" style={{ "margin-top": "4px" }}>
+                            {agent.description}
+                          </div>
+                        </Show>
+                      </div>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        <IconButton
+                          size="small"
+                          variant="ghost"
+                          icon="edit"
+                          onClick={(e: MouseEvent) => {
+                            e.stopPropagation()
+                            startEdit(agent)
+                          }}
+                        />
+                        <IconButton
+                          size="small"
+                          variant="ghost"
+                          icon="close"
+                          onClick={(e: MouseEvent) => {
+                            e.stopPropagation()
+                            confirmRemoveMode(agent)
+                          }}
+                        />
+                      </div>
                     </div>
-                  </Show>
-                </div>
-                <IconButton
-                  size="small"
-                  variant="ghost"
-                  icon="close"
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation()
-                    confirmRemoveMode(agent)
-                  }}
-                />
+                  }
+                >
+                  {/* Inline edit form */}
+                  <div>
+                    <SettingsRow
+                      title={language.t("settings.agentBehaviour.modeDescription")}
+                      description={language.t("settings.agentBehaviour.modeDescription.description")}
+                    >
+                      <TextField
+                        value={modeDescription()}
+                        placeholder={language.t("settings.agentBehaviour.modeDescription.placeholder")}
+                        onChange={(val) => setModeDescription(val)}
+                      />
+                    </SettingsRow>
+                    <SettingsRow
+                      title={language.t("settings.agentBehaviour.modePrompt")}
+                      description={language.t("settings.agentBehaviour.modePrompt.description")}
+                      last
+                    >
+                      <TextField
+                        value={modePrompt()}
+                        placeholder={language.t("settings.agentBehaviour.modePrompt.placeholder")}
+                        multiline
+                        onChange={(val) => setModePrompt(val)}
+                      />
+                    </SettingsRow>
+                    <div style={{ display: "flex", gap: "8px", "justify-content": "flex-end", "margin-top": "8px" }}>
+                      <Button variant="ghost" size="small" onClick={cancelEdit}>
+                        {language.t("common.cancel")}
+                      </Button>
+                      <Button variant="primary" size="small" onClick={handleSave}>
+                        {language.t("settings.agentBehaviour.modeSave")}
+                      </Button>
+                    </div>
+                  </div>
+                </Show>
               </div>
             )}
           </For>
