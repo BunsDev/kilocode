@@ -615,7 +615,9 @@ const AgentManagerContent: Component = () => {
 
   // Persist local session IDs and sidebar width to webview state for recovery (exclude pending tabs)
   createEffect(() => {
+    const prev = vscode.getState<Record<string, unknown>>() ?? {}
     vscode.setState({
+      ...prev,
       localSessionIDs: localSessionIDs().filter((id) => !isPending(id)),
       sidebarWidth: sidebarWidth(),
     })
