@@ -25,7 +25,7 @@ import { createSimpleContext } from "./helper"
 import type { Snapshot } from "@/snapshot"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
-import { batch, onMount } from "solid-js"
+import { batch, onCleanup, onMount } from "solid-js"
 import { Log } from "@/util/log"
 import type { Path } from "@kilocode/sdk"
 
@@ -73,6 +73,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
       path: Path
+      memory: { rss: number } | undefined // kilocode_change
     }>({
       provider_next: {
         all: [],
@@ -100,6 +101,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       formatter: [],
       vcs: undefined,
       path: { state: "", config: "", worktree: "", directory: "" },
+      memory: undefined, // kilocode_change
     })
 
     const sdk = useSDK()
@@ -413,6 +415,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.provider.auth().then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
             sdk.client.vcs.get().then((x) => setStore("vcs", reconcile(x.data))),
             sdk.client.path.get().then((x) => setStore("path", reconcile(x.data!))),
+            // kilocode_change start
+            sdk.client.memory.status().then((x) => {
+              if (x.data) setStore("memory", x.data)
+            }),
+            // kilocode_change end
           ]).then(() => {
             setStore("status", "complete")
           })
@@ -429,6 +436,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     onMount(() => {
       bootstrap()
+      // kilocode_change start
+      const poll = setInterval(() => {
+        sdk.client.memory
+          .status()
+          .then((x) => {
+            if (x.data) setStore("memory", x.data)
+          })
+          .catch(() => {})
+      }, 10_000)
+      onCleanup(() => clearInterval(poll))
+      // kilocode_change end
     })
 
     const fullSyncedSessions = new Set<string>()
