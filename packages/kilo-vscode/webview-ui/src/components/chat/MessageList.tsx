@@ -22,6 +22,7 @@ import { FeedbackDialog } from "./FeedbackDialog"
 import { VscodeSessionTurn } from "./VscodeSessionTurn"
 import { RevertBanner } from "./RevertBanner"
 import { AccountSwitcher } from "../shared/AccountSwitcher"
+import { KiloNotifications } from "./KiloNotifications"
 import { WorkingIndicator } from "../shared/WorkingIndicator"
 import { activeUserMessageID as getActiveUserMessageID } from "../../context/session-queue"
 
@@ -92,7 +93,10 @@ export const MessageList: Component<MessageListProps> = (props) => {
   return (
     <div class="message-list-container">
       <Show when={isEmpty()}>
-        <AccountSwitcher class="account-switcher-welcome" />
+        <div class="welcome-header">
+          <AccountSwitcher class="account-switcher-welcome" />
+          <KiloNotifications />
+        </div>
       </Show>
       <div
         ref={autoScroll.scrollRef}
