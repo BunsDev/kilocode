@@ -1068,15 +1068,26 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
           <Match when={part.state.status === "error" && part.state.error}>
             {(error) => {
               const cleaned = error().replace("Error: ", "")
-              if (cleaned.includes("before overwriting it. Use the Read tool first")) {
-                return null
-              }
               if (part.tool === "question" && cleaned.includes("dismissed this question")) {
                 return (
                   <div style="width: 100%; display: flex; justify-content: flex-end;">
                     <span class="text-13-regular text-text-weak cursor-default">
                       {i18n.t("ui.messagePart.questions.dismissed")}
                     </span>
+                  </div>
+                )
+              }
+              const hint =
+                cleaned.includes("before overwriting it. Use the Read tool first") ||
+                cleaned.includes("has been modified since it was last read") ||
+                cleaned.includes("oldString and newString are identical") ||
+                cleaned.includes("must match exactly, including whitespace") ||
+                cleaned.includes("Found multiple matches for oldString")
+              if (hint) {
+                return (
+                  <div data-component="tool-hint">
+                    <Icon name="arrow-right" size="small" />
+                    <span data-slot="tool-hint-message">{cleaned}</span>
                   </div>
                 )
               }
