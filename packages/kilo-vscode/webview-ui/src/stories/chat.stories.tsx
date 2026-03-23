@@ -13,6 +13,8 @@ import { ChatView } from "../components/chat/ChatView"
 import { TaskHeader } from "../components/chat/TaskHeader"
 import { QuestionDock } from "../components/chat/QuestionDock"
 import { SessionContext } from "../context/session"
+import { ServerContext } from "../context/server"
+import { NotificationsContext } from "../context/notifications"
 import type { QuestionRequest, TodoItem } from "../types/messages"
 
 const SESSION_ID = "story-session-chat-001"
@@ -236,4 +238,70 @@ export const TaskHeaderWithTodosAllDone: Story = {
       </StoryProviders>
     )
   },
+}
+
+// ---------------------------------------------------------------------------
+// Welcome screen with AccountSwitcher + KiloNotifications
+// ---------------------------------------------------------------------------
+
+const noop = () => {}
+
+/** Mock server context with profile data so AccountSwitcher is visible */
+const mockServer = {
+  connectionState: () => "connected" as const,
+  serverInfo: () => undefined,
+  extensionVersion: () => "1.0.0",
+  errorMessage: () => undefined,
+  errorDetails: () => undefined,
+  isConnected: () => true,
+  profileData: () => ({
+    profile: {
+      email: "dev@kilo.dev",
+      name: "Dev User",
+      organizations: [{ id: "org-1", name: "Kilo Org", role: "member" }],
+    },
+    balance: { balance: 5.0 },
+    currentOrgId: "org-1",
+  }),
+  deviceAuth: () => ({ status: "idle" as const }),
+  startLogin: noop,
+  vscodeLanguage: () => "en",
+  languageOverride: () => undefined,
+  workspaceDirectory: () => "/project",
+}
+
+/** Mock notifications context with one notification */
+const mockNotifications = {
+  notifications: () => [
+    {
+      id: "notif-1",
+      title: "Try BYOK for Kilo Gateway",
+      message: "Bring your own API key for even more flexibility with Kilo Gateway models.",
+      action: { actionText: "Learn more", actionURL: "https://kilo.ai/docs" },
+    },
+  ],
+  filteredNotifications: () => [
+    {
+      id: "notif-1",
+      title: "Try BYOK for Kilo Gateway",
+      message: "Bring your own API key for even more flexibility with Kilo Gateway models.",
+      action: { actionText: "Learn more", actionURL: "https://kilo.ai/docs" },
+    },
+  ],
+  dismiss: noop,
+}
+
+export const WelcomeWithSwitcherAndNotification: Story = {
+  name: "Welcome — account switcher + notification",
+  render: () => (
+    <StoryProviders sessionID={SESSION_ID} status="idle" noPadding>
+      <ServerContext.Provider value={mockServer as any}>
+        <NotificationsContext.Provider value={mockNotifications}>
+          <div style={{ width: "100%", height: "600px", display: "flex", "flex-direction": "column" }}>
+            <ChatView />
+          </div>
+        </NotificationsContext.Provider>
+      </ServerContext.Provider>
+    </StoryProviders>
+  ),
 }
