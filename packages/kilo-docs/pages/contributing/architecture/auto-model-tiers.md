@@ -151,6 +151,17 @@ The client-side chain works as follows:
 | `packages/opencode/src/session/llm.ts`          | Merges variant options into LLM call parameters                                       |
 | `packages/opencode/src/config/config.ts`        | Agent config schema includes `variant` field                                          |
 
+## Reasoning levels
+
+For a detailed breakdown of how reasoning effort is configured across modes, subagents, and provider-specific APIs, see [Auto Model Reasoning](/docs/contributing/architecture/auto-model-reasoning).
+
+Key points:
+
+- **Auto tiers**: Reasoning levels are defined server-side as part of each model's `variants` field and can be updated without client releases.
+- **Subagents**: Inherit the parent's auto tier model and get mode-appropriate routing via the variant system.
+- **Background tasks**: Use `kilo-auto/small` with minimal reasoning (e.g., `reasoningEffort: "minimal"` or `thinkingBudget: 0`).
+- **Models without reasoning control**: Some models used by auto tiers (Minimax M2.5, Kimi K2.5) use their native thinking behavior with no client-side effort control.
+
 ## Requirements
 
 - Unauthenticated users default to `kilo-auto/free` with no configuration required

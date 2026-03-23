@@ -133,3 +133,4 @@ Auto Model is actively being improved. We'd love to hear how it's working for yo
 - [Model Selection Guide](/docs/code-with-ai/agents/model-selection) - General guidance on choosing models
 - [Using Modes](/docs/code-with-ai/agents/using-modes) - Learn about different Kilo Code modes
 - [Free & Budget Models](/docs/code-with-ai/agents/free-and-budget-models) - Cost-effective alternatives
+- [Auto Model Reasoning (Architecture)](/docs/contributing/architecture/auto-model-reasoning) - Technical details on how reasoning levels are configured per mode and provider

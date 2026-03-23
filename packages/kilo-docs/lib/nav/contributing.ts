@@ -39,6 +39,10 @@ export const ContributingNav: NavSection[] = [
             children: "Auto Model Tiers",
           },
           {
+            href: "/contributing/architecture/auto-model-reasoning",
+            children: "Auto Model Reasoning",
+          },
+          {
             href: "/contributing/architecture/benchmarking",
             children: "Benchmarking",
           },
