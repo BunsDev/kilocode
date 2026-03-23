@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { PermissionNext } from "@/permission/next"
+import { PermissionID } from "@/permission/schema"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 
@@ -28,7 +29,7 @@ export const PermissionRoutes = lazy(() =>
       validator(
         "param",
         z.object({
-          requestID: z.string(),
+          requestID: PermissionID.zod,
         }),
       ),
       validator(
@@ -85,7 +86,7 @@ export const PermissionRoutes = lazy(() =>
         const params = c.req.valid("param")
         const json = c.req.valid("json")
         await PermissionNext.saveAlwaysRules({
-          requestID: params.requestID,
+          requestID: PermissionID.make(params.requestID),
           approvedAlways: json.approvedAlways,
           deniedAlways: json.deniedAlways,
         })

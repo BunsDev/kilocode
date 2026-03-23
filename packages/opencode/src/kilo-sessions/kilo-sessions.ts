@@ -13,6 +13,8 @@ import { KILO_API_BASE } from "@kilocode/kilo-gateway"
 import { Instance } from "@/project/instance"
 import { Vcs } from "@/project/vcs"
 import simpleGit from "simple-git"
+import { SessionID } from "../session/schema"
+import { ProviderID, ModelID } from "../provider/schema"
 
 export namespace KiloSessions {
   const log = Log.create({ service: "kilo-sessions" })
@@ -362,15 +364,15 @@ export namespace KiloSessions {
   async function fullSync(sessionId: string) {
     log.info("full sync", { sessionId })
 
-    const session = await Session.get(sessionId)
-    const diffs = await Session.diff(sessionId)
-    const messages = await Array.fromAsync(MessageV2.stream(sessionId))
+    const session = await Session.get(SessionID.make(sessionId))
+    const diffs = await Session.diff(SessionID.make(sessionId))
+    const messages = await Array.fromAsync(MessageV2.stream(SessionID.make(sessionId)))
     messages.reverse()
     const models = await Promise.all(
       messages
         .filter((m) => m.info.role === "user")
         .map((m) => (m.info as SDK.UserMessage).model)
-        .map((m) => Provider.getModel(m.providerID, m.modelID).then((m) => m)),
+        .map((m) => Provider.getModel(ProviderID.make(m.providerID), ModelID.make(m.modelID)).then((m) => m)),
     )
 
     await ingest.sync(sessionId, [

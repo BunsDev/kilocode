@@ -14,6 +14,9 @@ import { Bus } from "@/bus"
 import { Session } from "@/session"
 import { Discovery } from "./discovery"
 import { Glob } from "../util/glob"
+import { pathToFileURL } from "url"
+import type { Agent } from "@/agent/agent"
+import { PermissionNext } from "@/permission/next"
 
 import { KilocodePaths } from "../kilocode/paths" // kilocode_change
 
@@ -237,4 +240,30 @@ export namespace Skill {
     s.dirs = s.dirs.filter((d) => path.resolve(d) !== dir)
   }
   // kilocode_change end
+
+  export async function available(agent?: Agent.Info) {
+    const list = await all()
+    if (!agent) return list
+    return list.filter((skill) => PermissionNext.evaluate("skill", skill.name, agent.permission).action !== "deny")
+  }
+
+  export function fmt(list: Info[], opts: { verbose: boolean }) {
+    if (list.length === 0) {
+      return "No skills are currently available."
+    }
+    if (opts.verbose) {
+      return [
+        "<available_skills>",
+        ...list.flatMap((skill) => [
+          `  <skill>`,
+          `    <name>${skill.name}</name>`,
+          `    <description>${skill.description}</description>`,
+          `    <location>${pathToFileURL(skill.location).href}</location>`,
+          `  </skill>`,
+        ]),
+        "</available_skills>",
+      ].join("\n")
+    }
+    return ["## Available Skills", ...list.flatMap((skill) => `- **${skill.name}**: ${skill.description}`)].join("\n")
+  }
 }

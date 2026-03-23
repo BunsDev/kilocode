@@ -8,6 +8,8 @@ import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
 import { Question } from "../../src/question"
 import { Session } from "../../src/session"
+import { SessionID, MessageID, PartID } from "../../src/session/schema"
+import { ProviderID, ModelID } from "../../src/provider/schema"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionPrompt } from "../../src/session/prompt"
@@ -18,8 +20,8 @@ import { tmpdir } from "../fixture/fixture"
 Log.init({ print: false })
 
 const model = {
-  providerID: "openai",
-  modelID: "gpt-4",
+  providerID: ProviderID.make("openai"),
+  modelID: ModelID.make("gpt-4"),
 }
 
 async function withInstance(fn: () => Promise<void>) {
@@ -33,7 +35,7 @@ async function seed(input: {
 }) {
   const session = await Session.create({})
   const user = await Session.updateMessage({
-    id: Identifier.ascending("message"),
+    id: MessageID.make(Identifier.ascending("message")),
     role: "user",
     sessionID: session.id,
     time: {
@@ -43,7 +45,7 @@ async function seed(input: {
     model,
   })
   await Session.updatePart({
-    id: Identifier.ascending("part"),
+    id: PartID.make(Identifier.ascending("part")),
     messageID: user.id,
     sessionID: session.id,
     type: "text",
@@ -51,15 +53,15 @@ async function seed(input: {
   })
 
   const assistant: MessageV2.Assistant = {
-    id: Identifier.ascending("message"),
+    id: MessageID.make(Identifier.ascending("message")),
     role: "assistant",
     sessionID: session.id,
     time: {
       created: Date.now(),
     },
     parentID: user.id,
-    modelID: model.modelID,
-    providerID: model.providerID,
+    modelID: ModelID.make(model.modelID),
+    providerID: ProviderID.make(model.providerID),
     mode: "plan",
     agent: "plan",
     path: {
@@ -81,7 +83,7 @@ async function seed(input: {
   }
   await Session.updateMessage(assistant)
   await Session.updatePart({
-    id: Identifier.ascending("part"),
+    id: PartID.make(Identifier.ascending("part")),
     messageID: assistant.id,
     sessionID: session.id,
     type: "text",
@@ -90,7 +92,7 @@ async function seed(input: {
 
   for (const t of input.tools ?? []) {
     await Session.updatePart({
-      id: Identifier.ascending("part"),
+      id: PartID.make(Identifier.ascending("part")),
       messageID: assistant.id,
       sessionID: session.id,
       type: "tool",
@@ -114,7 +116,7 @@ async function seed(input: {
   }
 }
 
-async function latestUser(sessionID: string) {
+async function latestUser(sessionID: SessionID) {
   const messages = await Session.messages({ sessionID })
   return messages
     .slice()
@@ -239,15 +241,15 @@ describe("plan follow-up", () => {
     withInstance(async () => {
       const loop = spyOn(SessionPrompt, "loop").mockResolvedValue({
         info: {
-          id: "msg_test",
+          id: MessageID.make("msg_test"),
           role: "assistant",
-          sessionID: "ses_test",
+          sessionID: SessionID.make("ses_test"),
           time: {
             created: Date.now(),
           },
-          parentID: "msg_parent",
-          modelID: "test",
-          providerID: "test",
+          parentID: MessageID.make("msg_parent"),
+          modelID: ModelID.make("test"),
+          providerID: ProviderID.make("test"),
           mode: "code",
           agent: "code",
           path: {
@@ -316,7 +318,7 @@ describe("plan follow-up", () => {
       expect(loop).toHaveBeenCalledTimes(1)
       expect(_mocks.llmSpy).toHaveBeenCalledTimes(1)
 
-      const newSessionID = created[0]
+      const newSessionID =  SessionID.make(created[0])
       expect(added[0].id).toBe(newSessionID)
       const messages = await Session.messages({ sessionID: newSessionID })
       const user = messages.find((item) => item.info.role === "user")
@@ -348,13 +350,13 @@ describe("plan follow-up", () => {
     withInstance(async () => {
       const loop = spyOn(SessionPrompt, "loop").mockResolvedValue({
         info: {
-          id: "msg_test",
+          id: MessageID.make("msg_test"),
           role: "assistant",
-          sessionID: "ses_test",
+          sessionID: SessionID.make("ses_test"),
           time: { created: Date.now() },
-          parentID: "msg_parent",
-          modelID: "test",
-          providerID: "test",
+          parentID: MessageID.make("msg_parent"),
+          modelID: ModelID.make("test"),
+          providerID: ProviderID.make("test"),
           mode: "code",
           agent: "code",
           path: { cwd: "/tmp", root: "/tmp" },
@@ -376,9 +378,9 @@ describe("plan follow-up", () => {
         },
       }
       const seeded = await seed({ text: "1. Add API\n2. Add tests" })
-      const created = [] as string[]
+      const created: SessionID[]  = []
       const unsub = Bus.subscribe(TuiEvent.SessionSelect, (event) => {
-        created.push(event.properties.sessionID)
+        created.push(SessionID.make(event.properties.sessionID))
       })
 
       const pending = PlanFollowup.ask({
@@ -426,7 +428,7 @@ describe("plan follow-up", () => {
       abort.abort()
 
       const result = await PlanFollowup.ask({
-        sessionID: "ses_test",
+        sessionID: SessionID.make("ses_test"),
         messages: [],
         abort: abort.signal,
       })

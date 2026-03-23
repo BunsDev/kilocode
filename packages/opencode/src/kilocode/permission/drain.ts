@@ -1,6 +1,7 @@
 import { Bus } from "@/bus"
 import { Wildcard } from "@/util/wildcard"
 import type { PermissionNext } from "@/permission/next"
+import type { PermissionID } from "@/permission/schema"
 
 /**
  * Auto-resolve pending permissions now fully covered by approved or denied rules.
@@ -8,22 +9,19 @@ import type { PermissionNext } from "@/permission/next"
  * pending permission for the same pattern resolves or rejects automatically.
  */
 export async function drainCovered(
-  pending: Record<
-    string,
-    {
-      info: PermissionNext.Request
-      ruleset: PermissionNext.Ruleset
-      resolve: () => void
-      reject: (e: any) => void
-    }
-  >,
+  pending: Map<PermissionID, {
+    info: PermissionNext.Request
+    ruleset: PermissionNext.Ruleset
+    resolve: () => void
+    reject: (e: any) => void
+  }>,
   approved: PermissionNext.Ruleset,
   evaluate: typeof PermissionNext.evaluate,
   events: typeof PermissionNext.Event,
   DeniedError: typeof PermissionNext.DeniedError,
-  exclude?: string,
+  exclude?: PermissionID,
 ) {
-  for (const [id, entry] of Object.entries(pending)) {
+  for (const [id, entry] of pending) {
     if (id === exclude) continue
     const actions = entry.info.patterns.map((pattern) =>
       evaluate(entry.info.permission, pattern, entry.ruleset, approved),
@@ -31,7 +29,7 @@ export async function drainCovered(
     const denied = actions.some((r) => r.action === "deny")
     const allowed = !denied && actions.every((r) => r.action === "allow")
     if (!denied && !allowed) continue
-    delete pending[id]
+    pending.delete(id);
     if (denied) {
       Bus.publish(events.Replied, {
         sessionID: entry.info.sessionID,

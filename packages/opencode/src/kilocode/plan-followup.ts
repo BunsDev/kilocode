@@ -10,6 +10,7 @@ import { LLM } from "@/session/llm"
 import { MessageV2 } from "@/session/message-v2"
 import { Todo } from "@/session/todo"
 import { Log } from "@/util/log"
+import { SessionID, MessageID, PartID } from "../session/schema"
 
 function toText(item: MessageV2.WithParts): string {
   return item.parts
@@ -63,9 +64,9 @@ export async function generateHandover(input: {
       ? await Provider.getModel(agent.model.providerID, agent.model.modelID)
       : await Provider.getModel(input.model.providerID, input.model.modelID)
 
-    const sessionID = Identifier.ascending("session")
+    const sessionID = SessionID.make(Identifier.ascending("session"))
     const userMsg: MessageV2.User = {
-      id: Identifier.ascending("message"),
+      id: MessageID.make(Identifier.ascending("message")),
       sessionID,
       role: "user",
       time: { created: Date.now() },
@@ -114,7 +115,7 @@ export namespace PlanFollowup {
   async function resolvePlan(input: {
     assistant?: MessageV2.WithParts
     messages: MessageV2.WithParts[]
-    sessionID: string
+    sessionID: SessionID
   }) {
     // Fast path: check the last assistant message's text first (avoids array scanning)
     if (input.assistant) {
@@ -138,14 +139,14 @@ export namespace PlanFollowup {
   }
 
   async function inject(input: {
-    sessionID: string
+    sessionID: SessionID
     agent: string
     model: MessageV2.User["model"]
     text: string
     synthetic?: boolean
   }) {
     const msg: MessageV2.User = {
-      id: Identifier.ascending("message"),
+      id: MessageID.make(Identifier.ascending("message")),
       sessionID: input.sessionID,
       role: "user",
       time: {
@@ -156,7 +157,7 @@ export namespace PlanFollowup {
     }
     await Session.updateMessage(msg)
     await Session.updatePart({
-      id: Identifier.ascending("part"),
+      id: PartID.make(Identifier.ascending("part")),
       messageID: msg.id,
       sessionID: input.sessionID,
       type: "text",
@@ -165,7 +166,7 @@ export namespace PlanFollowup {
     } satisfies MessageV2.TextPart)
   }
 
-  function prompt(input: { sessionID: string; abort: AbortSignal }) {
+  function prompt(input: { sessionID: SessionID; abort: AbortSignal }) {
     const promise = Question.ask({
       sessionID: input.sessionID,
       questions: [
@@ -205,7 +206,7 @@ export namespace PlanFollowup {
   }
 
   async function startNew(input: {
-    sessionID: string
+    sessionID: SessionID
     plan: string
     messages: MessageV2.WithParts[]
     model: MessageV2.User["model"]
@@ -247,7 +248,7 @@ export namespace PlanFollowup {
   }
 
   export async function ask(input: {
-    sessionID: string
+    sessionID: SessionID
     messages: MessageV2.WithParts[]
     abort: AbortSignal
   }): Promise<"continue" | "break"> {

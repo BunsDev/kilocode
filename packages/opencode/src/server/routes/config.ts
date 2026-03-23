@@ -7,6 +7,7 @@ import { mapValues } from "remeda"
 import { errors } from "../error"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
+import { ModelID } from "../../provider/schema"
 // kilocode_change start
 import { fetchDefaultModel } from "@kilocode/kilo-gateway"
 import { Auth } from "../../auth"
@@ -98,7 +99,7 @@ export const ConfigRoutes = lazy(() =>
         // kilocode_change start - Use API default for Kilo provider if valid
         const defaults = mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id)
         if (kiloApiDefault && providers["kilo"]?.models[kiloApiDefault]) {
-          defaults["kilo"] = kiloApiDefault
+          defaults["kilo"] = ModelID.make(kiloApiDefault)
         }
         // kilocode_change end
 

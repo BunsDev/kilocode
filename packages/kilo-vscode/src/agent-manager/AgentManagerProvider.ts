@@ -525,7 +525,7 @@ export class AgentManagerProvider implements Disposable {
 
     try {
       const { data: session } = await client.session.create(
-        { directory: worktreePath, platform: PLATFORM },
+        { directory: worktreePath },
         { throwOnError: true },
       )
       return session
@@ -713,7 +713,7 @@ export class AgentManagerProvider implements Disposable {
     let session: Session
     try {
       const { data } = await client.session.create(
-        { directory: worktree.path, platform: PLATFORM },
+        { directory: worktree.path },
         { throwOnError: true },
       )
       session = data
