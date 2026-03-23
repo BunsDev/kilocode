@@ -11,6 +11,7 @@ import { KILO_API_BASE, HEADER_FEATURE } from "../api/constants.js"
 import { buildKiloHeaders } from "../headers.js"
 import type { ImportDeps, DrizzleDb } from "../cloud-sessions.js"
 import { fetchCloudSession, fetchCloudSessionForImport, importSessionToDb } from "../cloud-sessions.js"
+import { FimRateLimiter } from "./fim-rate-limiter.js"
 
 // Type definitions for OpenCode dependencies (injected at runtime)
 type Hono = any
@@ -119,6 +120,8 @@ export function createKiloRoutes(deps: KiloRoutesDeps) {
       .optional(),
     cost: z.number().optional(),
   })
+
+  const limiter = new FimRateLimiter()
 
   return new Hono()
     .get(
@@ -248,6 +251,15 @@ export function createKiloRoutes(deps: KiloRoutesDeps) {
           return c.json({ error: "No valid token found" }, 401)
         }
 
+        // Per-user rate limiting — prevent any single user from overwhelming upstream
+        const result = limiter.check(token.slice(0, 16))
+        if (!result.allowed) {
+          return c.json(
+            { error: `FIM rate limit exceeded. Retry after ${result.retryAfter}s`, retryAfter: result.retryAfter },
+            429,
+          )
+        }
+
         const organizationId = auth.type === "oauth" ? auth.accountId : undefined
 
         const { prefix, suffix, model, maxTokens, temperature } = c.req.valid("json")
@@ -280,7 +292,13 @@ export function createKiloRoutes(deps: KiloRoutesDeps) {
 
         if (!response.ok) {
           const errorText = await response.text()
-          return c.json({ error: `FIM request failed: ${response.status} ${errorText}` }, response.status as any)
+          // Propagate Retry-After from upstream so the client can respect it
+          const retryAfter = response.headers.get("retry-after")
+          const extra = retryAfter ? ` retry-after: ${retryAfter}` : ""
+          return c.json(
+            { error: `FIM request failed: ${response.status} ${errorText}${extra}` },
+            response.status as any,
+          )
         }
 
         // Stream the response through

@@ -153,7 +153,7 @@ describe("AutocompleteModel", () => {
           maxTokens: 256,
           temperature: 0.2,
         },
-        { signal },
+        { signal, sseMaxRetryAttempts: 1 },
       )
     })
   })

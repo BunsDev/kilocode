@@ -569,10 +569,21 @@ export class AutocompleteInlineCompletionProvider implements vscode.InlineComple
       if (controller.signal.aborted) return
 
       const latencyMs = performance.now() - startTime
+      const msg = error instanceof Error ? error.message : String(error)
+
+      // Log circuit breaker state for visibility
+      const breaker = this.model.breaker
+      if (breaker.blocked) {
+        console.warn(
+          `[Kilo New] Autocomplete circuit breaker open: ${breaker.errorKind}, ` +
+            `${breaker.consecutiveFailures} failures, cooldown ${Math.ceil(breaker.cooldownMs / 1000)}s`,
+        )
+      }
+
       this.telemetry?.captureLlmRequestFailed(
         {
           latencyMs,
-          error: error instanceof Error ? error.message : String(error),
+          error: msg,
         },
         telemetryContext,
       )

@@ -1,5 +1,6 @@
 import { ResponseMetaData } from "./types"
 import type { KiloConnectionService } from "../cli-backend"
+import { FimCircuitBreaker, extractRetryAfter } from "./FimCircuitBreaker"
 
 const DEFAULT_MODEL = "mistralai/codestral-2508"
 const PROVIDER_DISPLAY_NAME = "Kilo Gateway"
@@ -20,6 +21,7 @@ export class AutocompleteModel {
   private connectionService: KiloConnectionService | null = null
   public profileName: string | null = null
   public profileType: string | null = null
+  public readonly breaker = new FimCircuitBreaker()
 
   constructor(connectionService?: KiloConnectionService) {
     if (connectionService) {
@@ -42,6 +44,10 @@ export class AutocompleteModel {
    * Generate a FIM (Fill-in-the-Middle) completion via the CLI backend.
    * Uses the SDK's kilo.fim() SSE endpoint which handles auth and streaming.
    *
+   * Applies circuit-breaker logic: when the server returns 401/429, the breaker
+   * opens and blocks subsequent requests for an exponentially increasing backoff
+   * period, preventing the extension from hammering the server with doomed requests.
+   *
    * @param signal - Optional AbortSignal to cancel the SSE stream early (e.g. when the user types again)
    */
   public async generateFimResponse(
@@ -50,6 +56,13 @@ export class AutocompleteModel {
     onChunk: (text: string) => void,
     signal?: AbortSignal,
   ): Promise<ResponseMetaData> {
+    // Circuit breaker: skip request if we're in a backoff period
+    if (!this.breaker.canRequest()) {
+      const kind = this.breaker.errorKind
+      const seconds = Math.ceil(this.breaker.cooldownMs / 1000)
+      throw new Error(`FIM requests paused (${kind}, cooldown ${seconds}s)`)
+    }
+
     if (!this.connectionService) {
       throw new Error("Connection service is not available")
     }
@@ -65,26 +78,43 @@ export class AutocompleteModel {
     let inputTokens = 0
     let outputTokens = 0
 
-    const { stream } = await client.kilo.fim(
-      {
-        prefix,
-        suffix,
-        model: DEFAULT_MODEL,
-        maxTokens: 256,
-        temperature: 0.2,
-      },
-      { signal },
-    )
+    try {
+      const { stream } = await client.kilo.fim(
+        {
+          prefix,
+          suffix,
+          model: DEFAULT_MODEL,
+          maxTokens: 256,
+          temperature: 0.2,
+        },
+        {
+          signal,
+          // Disable SSE retry for FIM — these are short-lived requests, not persistent
+          // streams. Without this, the SDK would retry failed requests with exponential
+          // backoff (3s base, 30s max) before the AbortSignal cancels them.
+          sseMaxRetryAttempts: 1,
+        } as any,
+      )
 
-    for await (const chunk of stream) {
-      const content = chunk.choices?.[0]?.delta?.content
-      if (content) onChunk(content)
-      if (chunk.usage) {
-        inputTokens = chunk.usage.prompt_tokens ?? 0
-        outputTokens = chunk.usage.completion_tokens ?? 0
+      for await (const chunk of stream) {
+        const content = chunk.choices?.[0]?.delta?.content
+        if (content) onChunk(content)
+        if (chunk.usage) {
+          inputTokens = chunk.usage.prompt_tokens ?? 0
+          outputTokens = chunk.usage.completion_tokens ?? 0
+        }
+        if (chunk.cost !== undefined) cost = chunk.cost
       }
-      if (chunk.cost !== undefined) cost = chunk.cost
+    } catch (error) {
+      // Don't trigger circuit breaker for user-initiated aborts
+      if (signal?.aborted) throw error
+
+      const retry = extractRetryAfter(error)
+      this.breaker.onError(error, retry)
+      throw error
     }
+
+    this.breaker.onSuccess()
 
     return {
       cost,
