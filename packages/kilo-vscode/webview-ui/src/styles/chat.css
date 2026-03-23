@@ -889,6 +889,7 @@
 
 .prompt-input-ghost-text {
   color: var(--vscode-editorGhostText-foreground, rgba(255, 255, 255, 0.35));
+  display: inline-flex;
 }
 
 .prompt-input-hint {
