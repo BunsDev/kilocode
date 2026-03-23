@@ -14,7 +14,6 @@ import { TaskHeader } from "../components/chat/TaskHeader"
 import { QuestionDock } from "../components/chat/QuestionDock"
 import { SessionContext } from "../context/session"
 import { ServerContext } from "../context/server"
-import { NotificationsContext } from "../context/notifications"
 import type { QuestionRequest, TodoItem } from "../types/messages"
 
 const SESSION_ID = "story-session-chat-001"
@@ -244,7 +243,12 @@ export const TaskHeaderWithTodosAllDone: Story = {
 // Welcome screen with AccountSwitcher + KiloNotifications
 // ---------------------------------------------------------------------------
 
-const noop = () => {}
+const MOCK_NOTIFICATION = {
+  id: "notif-1",
+  title: "Try BYOK for Kilo Gateway",
+  message: "Bring your own API key for even more flexibility with Kilo Gateway models.",
+  action: { actionText: "Learn more", actionURL: "https://kilo.ai/docs" },
+}
 
 /** Mock server context with profile data so AccountSwitcher is visible */
 const mockServer = {
@@ -264,43 +268,20 @@ const mockServer = {
     currentOrgId: "org-1",
   }),
   deviceAuth: () => ({ status: "idle" as const }),
-  startLogin: noop,
+  startLogin: () => {},
   vscodeLanguage: () => "en",
   languageOverride: () => undefined,
   workspaceDirectory: () => "/project",
 }
 
-/** Mock notifications context with one notification */
-const mockNotifications = {
-  notifications: () => [
-    {
-      id: "notif-1",
-      title: "Try BYOK for Kilo Gateway",
-      message: "Bring your own API key for even more flexibility with Kilo Gateway models.",
-      action: { actionText: "Learn more", actionURL: "https://kilo.ai/docs" },
-    },
-  ],
-  filteredNotifications: () => [
-    {
-      id: "notif-1",
-      title: "Try BYOK for Kilo Gateway",
-      message: "Bring your own API key for even more flexibility with Kilo Gateway models.",
-      action: { actionText: "Learn more", actionURL: "https://kilo.ai/docs" },
-    },
-  ],
-  dismiss: noop,
-}
-
 export const WelcomeWithSwitcherAndNotification: Story = {
   name: "Welcome — account switcher + notification",
   render: () => (
-    <StoryProviders sessionID={SESSION_ID} status="idle" noPadding>
+    <StoryProviders sessionID={SESSION_ID} status="idle" noPadding notifications={[MOCK_NOTIFICATION]}>
       <ServerContext.Provider value={mockServer as any}>
-        <NotificationsContext.Provider value={mockNotifications}>
-          <div style={{ width: "100%", height: "600px", display: "flex", "flex-direction": "column" }}>
-            <ChatView />
-          </div>
-        </NotificationsContext.Provider>
+        <div style={{ width: "100%", height: "600px", display: "flex", "flex-direction": "column" }}>
+          <ChatView />
+        </div>
       </ServerContext.Provider>
     </StoryProviders>
   ),
