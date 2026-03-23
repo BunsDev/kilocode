@@ -16,7 +16,10 @@ Guidelines:
 
 5. For each subtask, use the task tool with the appropriate agent type:
    - "explore" for codebase research, finding files, understanding patterns
-   - "general" for implementation, analysis, and multi-step tasks
+   - "code" for implementation tasks — writing, editing, and refactoring code
+   - "debug" for diagnosing and fixing bugs with systematic debugging methodology
+   - "ask" for research and analysis that does not require code changes
+   - "general" for multi-step tasks that don't fit the above categories
    Provide each agent with all context it needs to work independently: relevant results from prior waves, file paths, constraints, and a clearly defined scope.
 
 6. When all waves are complete, synthesize the results into a summary of what was accomplished.

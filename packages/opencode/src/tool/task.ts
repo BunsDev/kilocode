@@ -24,11 +24,24 @@ const parameters = z.object({
   command: z.string().describe("The command that triggered this task").optional(),
 })
 
+// kilocode_change start - primary agents the orchestrator can delegate to
+const ORCHESTRATOR_AGENTS = new Set(["code", "debug", "ask"])
+// kilocode_change end
+
 export const TaskTool = Tool.define("task", async (ctx) => {
-  const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))
+  const caller = ctx?.agent
+  const orchestrator = caller?.name === "orchestrator"
+  const agents = await Agent.list().then((x) =>
+    x.filter((a) => {
+      if (a.mode !== "primary") return true
+      // kilocode_change start - let orchestrator delegate to primary agents
+      if (orchestrator && ORCHESTRATOR_AGENTS.has(a.name) && !a.hidden) return true
+      // kilocode_change end
+      return false
+    }),
+  )
 
   // Filter agents by permissions if agent provided
-  const caller = ctx?.agent
   const accessibleAgents = caller
     ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
     : agents
