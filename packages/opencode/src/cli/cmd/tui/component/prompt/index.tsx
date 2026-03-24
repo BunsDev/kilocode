@@ -121,6 +121,15 @@ export function Prompt(props: PromptProps) {
     return messages.findLast((m) => m.role === "user")
   })
 
+  // kilocode_change start - track last assistant message for resolved model display
+  const lastAssistantMessage = createMemo(() => {
+    if (!props.sessionID) return undefined
+    const messages = sync.data.message[props.sessionID]
+    if (!messages) return undefined
+    return messages.findLast((m) => m.role === "assistant")
+  })
+  // kilocode_change end
+
   const [store, setStore] = createStore<{
     prompt: PromptInfo
     mode: "normal" | "shell"
@@ -750,6 +759,21 @@ export function Prompt(props: PromptProps) {
     return !!current
   })
 
+  // kilocode_change start - resolved model display for kilo-auto
+  const isKiloAuto = createMemo(() => {
+    const m = local.model.current()
+    if (!m) return false
+    return m.modelID.startsWith("kilo-auto/")
+  })
+
+  const resolved = createMemo(() => {
+    if (!isKiloAuto()) return undefined
+    const msg = lastAssistantMessage()
+    if (!msg || msg.role !== "assistant") return undefined
+    return msg.resolvedModel
+  })
+  // kilocode_change end
+
   const placeholderText = createMemo(() => {
     if (props.sessionID) return undefined
     if (store.mode === "shell") {
@@ -1024,9 +1048,19 @@ export function Prompt(props: PromptProps) {
                 <box flexDirection="row" gap={1}>
                   <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
                     {local.model.parsed().model}
+                    {/* kilocode_change start - show resolved model for kilo-auto */}
+                    <Show when={resolved()}>
+                      {(r) => {
+                        const variant = local.model.variant.current()
+                        const suffix = variant ? ` · ${variant}` : ""
+                        return <span style={{ fg: theme.textMuted }}>{` (${r()}${suffix})`}</span>
+                      }}
+                    </Show>
+                    {/* kilocode_change end */}
                   </text>
                   <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                  <Show when={showVariant()}>
+                  {/* kilocode_change - suppress variant for kilo-auto since it's in the parenthetical */}
+                  <Show when={showVariant() && !isKiloAuto()}>
                     <text fg={theme.textMuted}>·</text>
                     <text>
                       <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>

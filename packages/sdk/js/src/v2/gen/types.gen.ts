@@ -253,6 +253,7 @@ export type AssistantMessage = {
   }
   structured?: unknown
   variant?: string
+  resolvedModel?: string
   finish?: string
 }
 

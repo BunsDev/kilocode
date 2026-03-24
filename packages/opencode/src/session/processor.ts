@@ -16,6 +16,7 @@ import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { Telemetry } from "@kilocode/kilo-telemetry" // kilocode_change
+import { ModelsDev } from "@/provider/models" // kilocode_change
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -273,6 +274,20 @@ export namespace SessionProcessor {
                   input.assistantMessage.finish = value.finishReason
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = usage.tokens
+                  // kilocode_change start - capture resolved model display name for kilo-auto
+                  if (
+                    !input.assistantMessage.resolvedModel &&
+                    input.assistantMessage.modelID.startsWith("kilo-auto/") &&
+                    value.response.modelId
+                  ) {
+                    const resolved = value.response.modelId
+                    const [provider, ...rest] = resolved.split("/")
+                    const model = rest.join("/")
+                    const providers = await ModelsDev.get()
+                    const name = providers[provider]?.models[model]?.name ?? providers[provider]?.models[resolved]?.name
+                    input.assistantMessage.resolvedModel = name ?? resolved
+                  }
+                  // kilocode_change end
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,

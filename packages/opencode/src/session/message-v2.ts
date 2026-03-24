@@ -446,6 +446,7 @@ export namespace MessageV2 {
     }),
     structured: z.any().optional(),
     variant: z.string().optional(),
+    resolvedModel: z.string().optional(), // kilocode_change - display name of resolved model for kilo-auto
     finish: z.string().optional(),
   }).meta({
     ref: "AssistantMessage",
