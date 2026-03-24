@@ -7,16 +7,19 @@ description: "Create and configure custom modes in Kilo Code"
 
 Kilo Code allows you to create **custom modes** to tailor Kilo's behavior to specific tasks or workflows. Custom modes can be either **global** (available across all projects) or **project-specific** (defined within a single project).
 
-## Sticky Models for Efficient Workflow
-
-Each mode—including custom ones—features **Sticky Models**. This means Kilo Code automatically remembers and selects the last model you used with a particular mode. This lets you assign different preferred models to different tasks without constant reconfiguration, as Kilo switches between models when you change modes.
-
 ## Why Use Custom Modes?
 
 - **Specialization:** Create modes optimized for specific tasks, like "Documentation Writer," "Test Engineer," or "Refactoring Expert"
 - **Safety:** Restrict a mode's access to sensitive files or commands. For example, a "Review Mode" could be limited to read-only operations
 - **Experimentation:** Safely experiment with different prompts and configurations without affecting other modes
 - **Team Collaboration:** Share custom modes with your team to standardize workflows
+
+{% tabs %}
+{% tab label="VSCode" %}
+
+## Sticky Models for Efficient Workflow
+
+Each mode—including custom ones—features **Sticky Models**. This means Kilo Code automatically remembers and selects the last model you used with a particular mode. This lets you assign different preferred models to different tasks without constant reconfiguration, as Kilo switches between models when you change modes.
 
 {% callout type="tip" %}
 **Keep custom modes on track:** Limit the types of files that they're allowed to edit using the `fileRegex` option in the `groups` configuration. This prevents modes from accidentally modifying files outside their intended scope.
@@ -134,8 +137,6 @@ If you see both YAML and JSON mode files, this is usually from legacy configurat
 ## YAML Configuration Format (Preferred)
 
 YAML is now the preferred format for defining custom modes due to better readability, comment support, and cleaner multi-line strings.
-
-### YAML Example
 
 ```yaml
 customModes:
@@ -388,9 +389,456 @@ customModes:
       - command
 ```
 
+{% /tab %}
+{% tab label="VSCode (Pre-release)" %}
+
+In the new extension, custom behavioral profiles are called **agents** instead of modes. Agents are defined as Markdown files with YAML frontmatter or as entries in the `agent` key of your config file.
+
+## What's Included in a Custom Agent?
+
+| Property                    | Description                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **name** (filename)         | The agent's identifier, derived from the `.md` filename (e.g., `docs-writer.md` creates an agent named `docs-writer`) |
+| **description**             | A short summary displayed in the agent picker and used by the orchestrator for delegation                             |
+| **model**                   | Pin a specific model in `provider/model` format (e.g., `anthropic/claude-sonnet-4-20250514`)                          |
+| **prompt** (markdown body)  | The system prompt text — the markdown body of the file, injected into the agent's system prompt                       |
+| **mode**                    | Role classification: `primary` (user-selectable), `subagent` (only invoked by other agents), or `all` (both)          |
+| **permission**              | Per-agent permission overrides controlling which tools the agent can use (e.g., deny `edit`, `bash`)                  |
+| **color**                   | Hex color (`#FF5733`) or theme keyword (`primary`, `accent`, `warning`, etc.) for the agent picker UI                 |
+| **steps**                   | Maximum agentic iterations before forcing a text-only response                                                        |
+| **temperature** / **top_p** | Sampling parameters for the agent's model                                                                             |
+| **variant**                 | Default model variant                                                                                                 |
+| **hidden**                  | If `true`, the agent is hidden from the UI (only meaningful for subagents)                                            |
+| **disable**                 | If `true`, removes the agent entirely                                                                                 |
+
+## Methods for Creating and Configuring Agents
+
+### 1. Ask Kilo! (Recommended)
+
+Ask Kilo to create an agent for you:
+
+```
+Create a new agent called "docs-writer" that can only read files and edit Markdown files.
+```
+
+Kilo will generate the agent definition and write it to `.kilo/agent/` in your project.
+
+### 2. Using the Settings UI
+
+You can manage agents through the **Settings → Agent Behaviour → Agents** subtab in the extension. This lets you view, create, and edit agent configurations — including the agent's prompt, model, permissions, and other properties.
+
+### 3. Markdown Files with YAML Frontmatter
+
+Create `.md` files in any of these directories:
+
+```
+.kilo/agents/my-agent.md
+.kilo/agent/my-agent.md
+.opencode/agents/my-agent.md
+```
+
+For global agents, place files in your global config directory:
+
+```
+~/.config/kilo/agent/my-agent.md
+```
+
+The **filename** (minus `.md`) becomes the agent name. Nested directories create namespaced names (e.g., `agents/backend/sql.md` becomes agent `backend/sql`).
+
+**Example agent file** (`.kilo/agents/docs-writer.md`):
+
+```markdown
+---
+description: Specialized for writing and editing technical documentation
+mode: primary
+color: "#10B981"
+permission:
+  edit:
+    "*.md": "allow"
+    "*": "deny"
+  bash: deny
+---
+
+You are a technical documentation specialist. Your expertise includes:
+
+- Writing clear, well-structured documentation
+- Following markdown best practices
+- Creating helpful code examples
+
+Focus on clarity and completeness. Only edit Markdown files.
+```
+
+### 4. Config File (`kilo.json`)
+
+Define agents under the `agent` key in your project's `kilo.json` (or `opencode.jsonc`):
+
+```jsonc
+{
+  "agent": {
+    "docs-writer": {
+      "description": "Specialized for writing and editing technical documentation",
+      "mode": "primary",
+      "color": "#10B981",
+      "prompt": "You are a technical documentation specialist...",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+      },
+    },
+    // Override a built-in agent
+    "code": {
+      "model": "anthropic/claude-sonnet-4-20250514",
+      "temperature": 0.3,
+    },
+  },
+}
+```
+
+## Agent Property Reference
+
+### `mode`
+
+Controls where the agent appears:
+
+| Value      | Behavior                                                                               |
+| ---------- | -------------------------------------------------------------------------------------- |
+| `primary`  | Shown in the agent picker — the user can select it directly                            |
+| `subagent` | Only invokable by other agents via the `task` tool                                     |
+| `all`      | Available both as a top-level pick and as a subagent (default for user-defined agents) |
+
+### `permission`
+
+An ordered set of rules controlling tool access. Permissions support three actions: `allow`, `deny`, and `ask` (prompt the user). You can use glob patterns to scope rules to specific files or commands:
+
+```yaml
+permission:
+  edit:
+    "*.md": "allow"
+    "*": "deny"
+  bash: deny
+  read: allow
+```
+
+Known permission types include: `read`, `edit`, `bash`, `glob`, `grep`, `list`, `task`, `webfetch`, `websearch`, `codesearch`, `todowrite`, `todoread`, and more.
+
+### `model`
+
+Pin a specific model using the `provider/model` format:
+
+```yaml
+model: anthropic/claude-sonnet-4-20250514
+```
+
+### `steps`
+
+Limits the number of agentic iterations (tool call rounds) before the agent is forced to respond with text only. Useful for preventing runaway agents:
+
+```yaml
+steps: 25
+```
+
+## Configuration Precedence
+
+Agent configurations merge from lowest to highest priority:
+
+1. Built-in (native) agent defaults
+2. Global config (`~/.config/kilo/kilo.json`)
+3. Project config (`kilo.json` at project root)
+4. `.kilo/` / `.opencode/` directory configs and agent `.md` files
+5. Environment variable overrides (`KILO_CONFIG_CONTENT`)
+
+When the same agent name appears at multiple levels, properties are merged (not replaced wholesale), so you can override just a model or temperature without redefining the entire agent.
+
+## Overriding Built-in Agents
+
+Override any built-in agent (**code**, **plan**, **debug**, **ask**, **orchestrator**, **explore**, **general**) by defining an agent with the same name:
+
+```jsonc
+// kilo.json — override the built-in "code" agent
+{
+  "agent": {
+    "code": {
+      "model": "openai/gpt-4o",
+      "temperature": 0.2,
+      "permission": {
+        "edit": {
+          "*.py": "allow",
+          "*": "deny",
+        },
+      },
+    },
+  },
+}
+```
+
+Or as a `.md` file (`.kilo/agents/code.md`):
+
+```markdown
+---
+model: openai/gpt-4o
+temperature: 0.2
+permission:
+  edit:
+    "*.py": "allow"
+    "*": "deny"
+---
+
+You are a Python specialist. Only edit Python files.
+```
+
+## Migration from VSCode Extension Modes
+
+If you have existing `.kilocodemodes` or `custom_modes.yaml` files from the VSCode extension, the new extension automatically migrates them on startup. The migration converts:
+
+- `slug` to the agent name (key)
+- `roleDefinition` + `customInstructions` to `prompt`
+- `groups` (e.g., `["read", "edit", "browser"]`) to `permission` rules
+- `whenToUse` / `description` to `description`
+- Mode is set to `primary`
+
+Built-in mode slugs (`code`, `ask`, `debug`, `orchestrator`) are skipped since they have native agent equivalents.
+
+{% /tab %}
+{% tab label="CLI" %}
+
+In the CLI, custom behavioral profiles are called **agents** instead of modes. Agents are defined as Markdown files with YAML frontmatter or as entries in the `agent` key of your config file.
+
+## What's Included in a Custom Agent?
+
+| Property                    | Description                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **name** (filename)         | The agent's identifier, derived from the `.md` filename (e.g., `docs-writer.md` creates an agent named `docs-writer`) |
+| **description**             | A short summary displayed in the agent picker and used by the orchestrator for delegation                             |
+| **model**                   | Pin a specific model in `provider/model` format (e.g., `anthropic/claude-sonnet-4-20250514`)                          |
+| **prompt** (markdown body)  | The system prompt text — the markdown body of the file, injected into the agent's system prompt                       |
+| **mode**                    | Role classification: `primary` (user-selectable), `subagent` (only invoked by other agents), or `all` (both)          |
+| **permission**              | Per-agent permission overrides controlling which tools the agent can use (e.g., deny `edit`, `bash`)                  |
+| **color**                   | Hex color (`#FF5733`) or theme keyword (`primary`, `accent`, `warning`, etc.) for the agent picker UI                 |
+| **steps**                   | Maximum agentic iterations before forcing a text-only response                                                        |
+| **temperature** / **top_p** | Sampling parameters for the agent's model                                                                             |
+| **variant**                 | Default model variant                                                                                                 |
+| **hidden**                  | If `true`, the agent is hidden from the UI (only meaningful for subagents)                                            |
+| **disable**                 | If `true`, removes the agent entirely                                                                                 |
+
+## Methods for Creating and Configuring Agents
+
+### 1. Ask Kilo! (Recommended)
+
+Ask Kilo to create an agent for you:
+
+```
+Create a new agent called "docs-writer" that can only read files and edit Markdown files.
+```
+
+Kilo will generate the agent definition and write it to `.kilo/agent/` in your project.
+
+### 2. Using `kilo agent create`
+
+The CLI provides an interactive command:
+
+```bash
+kilo agent create
+```
+
+This walks you through selecting a description, mode, and tools, then uses an LLM to generate the agent's system prompt and writes a `.md` file with YAML frontmatter.
+
+### 3. Markdown Files with YAML Frontmatter
+
+Create `.md` files in any of these directories:
+
+```
+.kilo/agents/my-agent.md
+.kilo/agent/my-agent.md
+.opencode/agents/my-agent.md
+```
+
+For global agents, place files in your global config directory:
+
+```
+~/.config/kilo/agent/my-agent.md
+```
+
+The **filename** (minus `.md`) becomes the agent name. Nested directories create namespaced names (e.g., `agents/backend/sql.md` becomes agent `backend/sql`).
+
+**Example agent file** (`.kilo/agents/docs-writer.md`):
+
+```markdown
+---
+description: Specialized for writing and editing technical documentation
+mode: primary
+color: "#10B981"
+permission:
+  edit:
+    "*.md": "allow"
+    "*": "deny"
+  bash: deny
+---
+
+You are a technical documentation specialist. Your expertise includes:
+
+- Writing clear, well-structured documentation
+- Following markdown best practices
+- Creating helpful code examples
+
+Focus on clarity and completeness. Only edit Markdown files.
+```
+
+### 4. Config File (`kilo.json`)
+
+Define agents under the `agent` key in your project's `kilo.json` (or `opencode.jsonc`):
+
+```jsonc
+{
+  "agent": {
+    "docs-writer": {
+      "description": "Specialized for writing and editing technical documentation",
+      "mode": "primary",
+      "color": "#10B981",
+      "prompt": "You are a technical documentation specialist...",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+      },
+    },
+    // Override a built-in agent
+    "code": {
+      "model": "anthropic/claude-sonnet-4-20250514",
+      "temperature": 0.3,
+    },
+  },
+}
+```
+
+## Agent Property Reference
+
+### `mode`
+
+Controls where the agent appears:
+
+| Value      | Behavior                                                                               |
+| ---------- | -------------------------------------------------------------------------------------- |
+| `primary`  | Shown in the agent picker — the user can select it directly                            |
+| `subagent` | Only invokable by other agents via the `task` tool                                     |
+| `all`      | Available both as a top-level pick and as a subagent (default for user-defined agents) |
+
+### `permission`
+
+An ordered set of rules controlling tool access. Permissions support three actions: `allow`, `deny`, and `ask` (prompt the user). You can use glob patterns to scope rules to specific files or commands:
+
+```yaml
+permission:
+  edit:
+    "*.md": "allow"
+    "*": "deny"
+  bash: deny
+  read: allow
+```
+
+Known permission types include: `read`, `edit`, `bash`, `glob`, `grep`, `list`, `task`, `webfetch`, `websearch`, `codesearch`, `todowrite`, `todoread`, and more.
+
+### `model`
+
+Pin a specific model using the `provider/model` format:
+
+```yaml
+model: anthropic/claude-sonnet-4-20250514
+```
+
+### `steps`
+
+Limits the number of agentic iterations (tool call rounds) before the agent is forced to respond with text only. Useful for preventing runaway agents:
+
+```yaml
+steps: 25
+```
+
+## Configuration Precedence
+
+Agent configurations merge from lowest to highest priority:
+
+1. Built-in (native) agent defaults
+2. Global config (`~/.config/kilo/kilo.json`)
+3. Project config (`kilo.json` at project root)
+4. `.kilo/` / `.opencode/` directory configs and agent `.md` files
+5. Environment variable overrides (`KILO_CONFIG_CONTENT`)
+
+When the same agent name appears at multiple levels, properties are merged (not replaced wholesale), so you can override just a model or temperature without redefining the entire agent.
+
+## Overriding Built-in Agents
+
+Override any built-in agent (**code**, **plan**, **debug**, **ask**, **orchestrator**, **explore**, **general**) by defining an agent with the same name:
+
+```jsonc
+// kilo.json — override the built-in "code" agent
+{
+  "agent": {
+    "code": {
+      "model": "openai/gpt-4o",
+      "temperature": 0.2,
+      "permission": {
+        "edit": {
+          "*.py": "allow",
+          "*": "deny",
+        },
+      },
+    },
+  },
+}
+```
+
+Or as a `.md` file (`.kilo/agents/code.md`):
+
+```markdown
+---
+model: openai/gpt-4o
+temperature: 0.2
+permission:
+  edit:
+    "*.py": "allow"
+    "*": "deny"
+---
+
+You are a Python specialist. Only edit Python files.
+```
+
+## Migration from VSCode Extension Modes
+
+If you have existing `.kilocodemodes` or `custom_modes.yaml` files from the VSCode extension, the CLI automatically migrates them on startup. The migration converts:
+
+- `slug` to the agent name (key)
+- `roleDefinition` + `customInstructions` to `prompt`
+- `groups` (e.g., `["read", "edit", "browser"]`) to `permission` rules
+- `whenToUse` / `description` to `description`
+- Mode is set to `primary`
+
+Built-in mode slugs (`code`, `ask`, `debug`, `orchestrator`) are skipped since they have native agent equivalents.
+
+{% /tab %}
+{% /tabs %}
+
 ## Understanding Regex in Custom Modes
 
-Regular expressions (`fileRegex`) offer fine-grained control over file editing permissions.
+{% tabs %}
+{% tab label="VSCode" %}
+
+Regular expressions (`fileRegex`) in the **VSCode** version offer fine-grained control over file editing permissions within tool groups.
+
+{% /tab %}
+{% tab label="VSCode (Pre-release) & CLI" %}
+
+The new extension and CLI use **permission rules with glob patterns** instead of regex. Permissions are defined per-tool (e.g., `edit`, `bash`, `read`) and support `allow`, `deny`, and `ask` actions with glob matching:
+
+```yaml
+permission:
+  edit:
+    "*.md": "allow"
+    "*": "deny"
+```
+
+The **VSCode** version's `fileRegex` approach is automatically converted to permission rules during migration.
+
+{% /tab %}
+{% /tabs %}
 
 {% callout type="tip" %}
 
@@ -445,6 +893,9 @@ When a mode attempts to edit a file that doesn't match its `fileRegex` pattern, 
 
 ## Example Configurations
 
+{% tabs %}
+{% tab label="VSCode" %}
+
 ### Basic Documentation Writer (YAML)
 
 ```yaml
@@ -498,7 +949,100 @@ customModes:
       - browser
 ```
 
+{% /tab %}
+{% tab label="VSCode (Pre-release) & CLI" %}
+
+### Basic Documentation Writer (`.kilo/agents/docs-writer.md`)
+
+```markdown
+---
+description: Specialized for writing and editing technical documentation
+mode: primary
+color: "#10B981"
+permission:
+  edit:
+    "*.md": "allow"
+    "*": "deny"
+  bash: deny
+---
+
+You are a technical writer specializing in clear documentation.
+Focus on clear explanations and examples.
+```
+
+### Test Engineer (`.kilo/agents/test-engineer.md`)
+
+```markdown
+---
+description: Focused on writing and maintaining test suites
+mode: primary
+color: "#F59E0B"
+permission:
+  edit:
+    "*.{test,spec}.{js,ts}": "allow"
+    "*": "deny"
+---
+
+You are a test engineer focused on code quality.
+Use for writing tests, debugging test failures, and improving test coverage.
+```
+
+### Security Reviewer (`.kilo/agents/security-review.md`)
+
+```markdown
+---
+description: Read-only security analysis and vulnerability assessment
+mode: primary
+color: "#EF4444"
+permission:
+  edit: deny
+  bash: deny
+---
+
+You are a security specialist reviewing code for vulnerabilities.
+
+Focus on:
+
+- Input validation issues
+- Authentication and authorization flaws
+- Data exposure risks
+- Injection vulnerabilities
+```
+
+### Config File Example (`kilo.json`)
+
+```jsonc
+{
+  "agent": {
+    "docs-writer": {
+      "description": "Specialized for writing and editing technical documentation",
+      "mode": "primary",
+      "color": "#10B981",
+      "prompt": "You are a technical writer specializing in clear documentation.",
+      "permission": {
+        "edit": { "*.md": "allow", "*": "deny" },
+        "bash": "deny",
+      },
+    },
+    "test-engineer": {
+      "description": "Focused on writing and maintaining test suites",
+      "mode": "primary",
+      "prompt": "You are a test engineer focused on code quality.",
+      "permission": {
+        "edit": { "*.{test,spec}.{js,ts}": "allow", "*": "deny" },
+      },
+    },
+  },
+}
+```
+
+{% /tab %}
+{% /tabs %}
+
 ## Troubleshooting
+
+{% tabs %}
+{% tab label="VSCode" %}
 
 ### Common Issues
 
@@ -514,6 +1058,43 @@ customModes:
 - **Hyphens for List Items:** List items start with a hyphen and a space (e.g., `- read`)
 - **Validate Your YAML:** Use online YAML validators or your editor's built-in validation
 
+{% /tab %}
+{% tab label="VSCode (Pre-release)" %}
+
+### Common Issues
+
+- **Agent not appearing:** Ensure the `.md` file is in a recognized directory (`.kilo/agents/`, `.kilo/agent/`, `.opencode/agents/`). Check that the `mode` property is `primary` or `all` if you expect it in the agent picker.
+- **Permission errors:** Permission rules are evaluated last-match-wins. If an agent can't use a tool you expect, check that an `allow` rule appears after any `deny` rules for that permission.
+- **YAML frontmatter parse errors:** Ensure the frontmatter block starts and ends with `---` on its own line. Validate that YAML keys match expected property names (e.g., `top_p` not `topP`).
+- **Agent overrides not working:** Config merges from global to project level. If a global config sets a property, your project config can override it, but both must use the same agent name.
+
+### Tips for Agent Definitions
+
+- **Keep prompts focused:** The markdown body is your system prompt — write it as if briefing a colleague
+- **Use `mode: subagent`** for helper agents that shouldn't be directly selectable by users
+- **Use the Settings UI** to view and edit agents through the **Settings → Agent Behaviour → Agents** subtab
+- **Legacy modes are auto-migrated:** If you have `.kilocodemodes` files, they'll be converted on startup — no manual migration needed
+
+{% /tab %}
+{% tab label="CLI" %}
+
+### Common Issues
+
+- **Agent not appearing:** Ensure the `.md` file is in a recognized directory (`.kilo/agents/`, `.kilo/agent/`, `.opencode/agents/`). Check that the `mode` property is `primary` or `all` if you expect it in the agent picker.
+- **Permission errors:** Permission rules are evaluated last-match-wins. If an agent can't use a tool you expect, check that an `allow` rule appears after any `deny` rules for that permission.
+- **YAML frontmatter parse errors:** Ensure the frontmatter block starts and ends with `---` on its own line. Validate that YAML keys match expected property names (e.g., `top_p` not `topP`).
+- **Agent overrides not working:** Config merges from global to project level. If a global config sets a property, your project config can override it, but both must use the same agent name.
+
+### Tips for Agent Definitions
+
+- **Keep prompts focused:** The markdown body is your system prompt — write it as if briefing a colleague
+- **Use `mode: subagent`** for helper agents that shouldn't be directly selectable by users
+- **Test with `kilo agent create`** to see how the CLI generates agent definitions, then customize from there
+- **Legacy modes are auto-migrated:** If you have `.kilocodemodes` files, they'll be converted on startup — no manual migration needed
+
+{% /tab %}
+{% /tabs %}
+
 ## Community Gallery
 
-Ready to explore more? Check out the [Show and Tell](https://github.com/Kilo-Org/kilocode/discussions/categories/show-and-tell) to discover and share custom modes created by the community!
+Ready to explore more? Check out the [Show and Tell](https://github.com/Kilo-Org/kilocode/discussions/categories/show-and-tell) to discover and share custom modes and agents created by the community!
