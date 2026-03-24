@@ -770,6 +770,8 @@ export function Prompt(props: PromptProps) {
     if (!isKiloAuto()) return undefined
     const msg = lastAssistantMessage()
     if (!msg || msg.role !== "assistant") return undefined
+    const m = local.model.current()
+    if (!m || msg.modelID !== m.modelID) return undefined
     return msg.resolvedModel
   })
   // kilocode_change end
