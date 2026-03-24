@@ -367,10 +367,17 @@ async function openKiloInNewTab(context: vscode.ExtensionContext, connectionServ
  */
 function ensureCommandsSkipShell(commands: string[]): void {
   const config = vscode.workspace.getConfiguration("terminal.integrated")
-  const current: string[] = config.get("commandsToSkipShell", [])
-  const missing = commands.filter((cmd) => !current.includes(cmd))
+  const info = config.inspect<string[]>("commandsToSkipShell")
+  // Update whichever scope already carries an override so we don't
+  // shadow workspace settings or leak workspace values into global.
+  const [existing, target] = info?.workspaceFolderValue
+    ? [info.workspaceFolderValue, vscode.ConfigurationTarget.WorkspaceFolder]
+    : info?.workspaceValue
+      ? [info.workspaceValue, vscode.ConfigurationTarget.Workspace]
+      : [info?.globalValue ?? [], vscode.ConfigurationTarget.Global]
+  const missing = commands.filter((cmd) => !existing.includes(cmd))
   if (missing.length === 0) return
-  config.update("commandsToSkipShell", [...current, ...missing], vscode.ConfigurationTarget.Global)
+  config.update("commandsToSkipShell", [...existing, ...missing], target)
 }
 
 function waitForWebviewPanelToBeActive(panel: vscode.WebviewPanel): Promise<void> {
