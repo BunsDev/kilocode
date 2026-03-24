@@ -7,6 +7,7 @@ import { lazy } from "../util/lazy"
 import { Lock } from "../util/lock"
 import { $ } from "bun"
 import { NamedError } from "@opencode-ai/util/error"
+import { modify, applyEdits, parse as parseJsonc } from "jsonc-parser" // kilocode_change
 import z from "zod"
 
 export namespace Storage {
@@ -139,6 +140,35 @@ export namespace Storage {
         )
       }
     },
+    // kilocode_change start — preserve bash:allow for existing users when default changes to bash:ask
+    async () => {
+      const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
+        path.join(Global.Path.config, file),
+      )
+      const existing = await (async () => {
+        for (const file of candidates) {
+          if (await Bun.file(file).exists()) return file
+        }
+      })()
+      // no global config → new user, they'll get the new bash:ask default
+      if (!existing) return
+      const text = await Bun.file(existing).text()
+      const data = parseJsonc(text) ?? {}
+      // user already has an explicit bash permission → nothing to do
+      if (data.permission?.bash) return
+      // existing user without bash permission → write bash:allow to preserve their current behavior
+      if (existing.endsWith(".jsonc")) {
+        const edits = modify(text, ["permission", "bash"], "allow", {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        })
+        await Bun.write(existing, applyEdits(text, edits))
+      } else {
+        const merged = { ...data, permission: { ...data.permission, bash: "allow" } }
+        await Bun.write(existing, JSON.stringify(merged, null, 2))
+      }
+      log.info("migrated bash permission to allow for existing user", { path: existing })
+    },
+    // kilocode_change end
   ]
 
   const state = lazy(async () => {
