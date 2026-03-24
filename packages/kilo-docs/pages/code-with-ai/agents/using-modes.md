@@ -7,6 +7,10 @@ description: "Understanding and using different modes in Kilo Code"
 
 Modes in Kilo Code are specialized personas that tailor the assistant's behavior to your current task. Each mode offers different capabilities, expertise, and access levels to help you accomplish specific goals.
 
+{% callout type="info" %}
+The **VSCode** version calls these **modes**, while the **VSCode (Pre-release) & CLI** version calls them **agents**. The concept is the same—specialized personas with distinct tool access and behavior.
+{% /callout %}
+
 ## Why Use Different Modes?
 
 - **Task specialization:** Get precisely the type of assistance you need for your current task
@@ -14,9 +18,12 @@ Modes in Kilo Code are specialized personas that tailor the assistant's behavior
 - **Focused interactions:** Receive responses optimized for your current activity
 - **Workflow optimization:** Seamlessly transition between planning, implementing, debugging, and learning
 
-{% youtube url="https://youtu.be/cS4vQfX528w" caption="Explaining the different modes in Kilo Code" /%}
-
 ## Switching Between Modes
+
+{% tabs %}
+{% tab label="VSCode" %}
+
+{% youtube url="https://youtu.be/cS4vQfX528w" caption="Explaining the different modes in Kilo Code" /%}
 
 Four ways to switch modes:
 
@@ -49,7 +56,31 @@ Users often confuse `/newtask` and `/smol`. Here's the key difference:
 
    {% image src="/docs/img/modes/modes-2.png" alt="Accepting a mode switch suggestion from Kilo Code" width="400" /%}
 
+{% /tab %}
+{% tab label="VSCode (Pre-release)" %}
+
+There are several ways to switch agents:
+
+- **Dropdown menu:** Click the agent selector in the sidebar to switch between agents.
+- **Slash commands:** Type `/` in the chat input to switch agents (e.g., `/code`, `/ask`, `/plan`, `/debug`).
+- **Keyboard shortcut:** Use a keyboard shortcut to cycle through available agents.
+
+{% /tab %}
+{% tab label="CLI" %}
+
+There are several ways to switch agents:
+
+- **Keybinds:** Press the displayed key to cycle through available agents.
+- **Slash commands:** Type `/` in the chat input to see available commands, including switching agents (e.g., `/code`, `/ask`, `/plan`, `/debug`).
+- **Config file:** Set the `default_agent` key in your configuration to change the default agent on startup.
+
+{% /tab %}
+{% /tabs %}
+
 ## Built-in Modes
+
+{% tabs %}
+{% tab label="VSCode" %}
 
 ### Code Mode (Default)
 
@@ -109,13 +140,61 @@ Users often confuse `/newtask` and `/smol`. Here's the key difference:
 | **Ideal For**        | Catching issues early, enforcing code standards, accelerating PR turnaround                                                       |
 | **Special Features** | Code review before committing, surfacing feedback across performance, security, style, and test coverage                          |
 
+{% /tab %}
+{% tab label="VSCode (Pre-release) & CLI" %}
+
+### code (Default)
+
+| Aspect               | Details                                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Description**      | A skilled software engineer with expertise in programming languages, design patterns, and best practices          |
+| **Tool Access**      | Full access to all tools: `read`, `edit`, `glob`, `grep`, `bash`, `task`, `webfetch`, plus tools from MCP servers |
+| **Ideal For**        | Writing code, implementing features, debugging, and general development                                           |
+| **Special Features** | No tool restrictions—full flexibility for all coding tasks                                                        |
+
+### ask
+
+| Aspect               | Details                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| **Description**      | A knowledgeable technical assistant focused on answering questions without changing your codebase |
+| **Tool Access**      | Read-only tools only (cannot edit files or run commands)                                          |
+| **Ideal For**        | Code explanation, concept exploration, and technical learning                                     |
+| **Special Features** | Optimized for informative responses without modifying your project                                |
+
+### plan
+
+| Aspect               | Details                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Description**      | An experienced technical leader and planner who helps design systems and create implementation plans |
+| **Tool Access**      | Read-only tools plus restricted file editing (e.g., markdown files only)                             |
+| **Ideal For**        | System design, high-level planning, and architecture discussions                                     |
+| **Special Features** | Similar to the **VSCode** version's "Architect" mode, with a planning-focused approach            |
+
+### debug
+
+| Aspect               | Details                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| **Description**      | An expert problem solver specializing in systematic troubleshooting and diagnostics |
+| **Tool Access**      | Full access to all tools                                                            |
+| **Ideal For**        | Tracking down bugs, diagnosing errors, and resolving complex issues                 |
+| **Special Features** | Uses a methodical approach of analyzing, narrowing possibilities, and fixing issues |
+
+### orchestrator
+
+| Aspect               | Details                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Description**      | A strategic workflow orchestrator who coordinates complex tasks by delegating them to appropriate specialized agents |
+| **Tool Access**      | Limited access to create new tasks and coordinate workflows                                                          |
+| **Ideal For**        | Breaking down complex projects into manageable subtasks assigned to specialized agents                               |
+| **Special Features** | Delegates work to other agents; also has access to the **explore** subagent for codebase exploration                 |
+
+{% callout type="info" %}
+The **VSCode (Pre-release) & CLI** version does not include a built-in Review agent. Code review workflows can be handled by the **code** agent or via custom agent configurations.
+{% /callout %}
+
+{% /tab %}
+{% /tabs %}
+
 ## Custom Modes
 
 Create your own specialized assistants by defining tool access, file permissions, and behavior instructions. Custom modes help enforce team standards or create purpose-specific assistants. See [Custom Modes documentation](/docs/customize/custom-modes) for setup instructions.
-
-<!--
-EXISTING PAGES TO MIGRATE:
-- `basic-usage/using-modes` - Modes documentation
-
-Migrate the existing modes documentation here.
--->
