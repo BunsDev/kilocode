@@ -19,6 +19,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let stopTimer: ReturnType<typeof setTimeout> | undefined
   let cleanup: (() => void) | undefined
   let auto: { time: number } | undefined
+  let last: { top: number; height: number; time: number } | undefined
 
   const threshold = () => options.bottomThreshold ?? 10
 
@@ -121,6 +122,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const el = scroll
     if (!el) return
 
+    const top = Math.round(el.scrollTop)
+    const height = Math.round(el.scrollHeight)
+    const prev = last
+    last = { top, height, time: Date.now() }
+
     if (!canScroll(el)) {
       if (store.userScrolled) setStore("userScrolled", false)
       return
@@ -133,21 +139,27 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     // Ignore scroll events triggered by our own scrollToBottom calls.
     if (!store.userScrolled && isAuto(el)) {
+      const distance = distanceFromBottom(el)
+      if (distance > threshold()) {
+        scrollToBottom(true)
+        return
+      }
       scrollToBottom(false)
       return
     }
 
-    // Debounce to avoid layout-induced scroll shifts (e.g. images loading,
-    // virtual-list reflows) from incorrectly breaking auto-follow.
-    if (stopTimer) clearTimeout(stopTimer)
-    stopTimer = setTimeout(() => {
-      stopTimer = undefined
-      const cur = scroll
-      if (!cur) return
-      if (distanceFromBottom(cur) < threshold()) return
-      if (!store.userScrolled && isAuto(cur)) return
-      stop()
-    }, DEBOUNCE_MS)
+    if (!store.userScrolled && prev) {
+      const drop = prev.top - top
+      const shrink = prev.height - height
+      const age = Date.now() - prev.time
+      const distance = distanceFromBottom(el)
+      const drift = drop > threshold() * 3 && age < 400
+      const collapsed = shrink > threshold() * 2 && age < 400
+      if (distance > threshold() && (drift || collapsed)) {
+        scrollToBottom(true)
+        return
+      }
+    }
   }
 
   const handleInteraction = () => {
