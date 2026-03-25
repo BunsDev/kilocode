@@ -1088,6 +1088,13 @@ export const dict = {
   "settings.agentBehaviour.editMcp.transportRemote": "Remote server (SSE/HTTP transport)",
   "settings.agentBehaviour.editMcp.env": "Environment Variables",
   "settings.agentBehaviour.editMcp.env.help": "Variables passed to the MCP server process.",
+  "settings.agentBehaviour.addMcp.command": "Command",
+  "settings.agentBehaviour.addMcp.command.placeholder": "e.g. npx",
+  "settings.agentBehaviour.addMcp.args": "Arguments",
+  "settings.agentBehaviour.addMcp.args.help": "One argument per line. Paths with spaces are preserved as-is.",
+  "settings.agentBehaviour.addMcp.args.placeholder": "e.g.\n-y\n@modelcontextprotocol/server-filesystem\n/tmp",
+  "settings.agentBehaviour.addMcp.url": "Server URL",
+  "settings.agentBehaviour.addMcp.url.placeholder": "e.g. http://localhost:3000/sse",
   "settings.agentBehaviour.mcpEmpty": "No MCP servers configured. Edit the opencode config file to add MCP servers.",
   "settings.agentBehaviour.workflowsPlaceholder": "Workflows are managed via workflow files in your workspace.",
   "settings.agentBehaviour.workflows.description":

@@ -1102,6 +1102,14 @@ export const dict = {
   "settings.agentBehaviour.editMcp.transportRemote": "Externe server (SSE/HTTP-transport)",
   "settings.agentBehaviour.editMcp.env": "Omgevingsvariabelen",
   "settings.agentBehaviour.editMcp.env.help": "Variabelen die worden doorgegeven aan het MCP-serverproces.",
+  "settings.agentBehaviour.addMcp.command": "Opdracht",
+  "settings.agentBehaviour.addMcp.command.placeholder": "e.g. npx",
+  "settings.agentBehaviour.addMcp.args": "Argumenten",
+  "settings.agentBehaviour.addMcp.args.help":
+    "Eén argument per regel. Paden met spaties worden ongewijzigd overgenomen.",
+  "settings.agentBehaviour.addMcp.args.placeholder": "e.g.\n-y\n@modelcontextprotocol/server-filesystem\n/tmp",
+  "settings.agentBehaviour.addMcp.url": "Server-URL",
+  "settings.agentBehaviour.addMcp.url.placeholder": "e.g. http://localhost:3000/sse",
   "settings.agentBehaviour.mcpEmpty":
     "Geen MCP-servers geconfigureerd. Bewerk het opencode configuratiebestand om MCP-servers toe te voegen.",
   "settings.agentBehaviour.workflowsPlaceholder": "Workflows worden beheerd via workflowbestanden in je workspace.",

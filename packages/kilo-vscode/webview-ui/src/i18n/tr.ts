@@ -1101,6 +1101,13 @@ export const dict = {
   "settings.agentBehaviour.editMcp.transportRemote": "Uzak sunucu (SSE/HTTP taşıma)",
   "settings.agentBehaviour.editMcp.env": "Ortam Değişkenleri",
   "settings.agentBehaviour.editMcp.env.help": "MCP sunucu sürecine aktarılan değişkenler.",
+  "settings.agentBehaviour.addMcp.command": "Komut",
+  "settings.agentBehaviour.addMcp.command.placeholder": "e.g. npx",
+  "settings.agentBehaviour.addMcp.args": "Argümanlar",
+  "settings.agentBehaviour.addMcp.args.help": "Satır başına bir argüman. Boşluklu yollar olduğu gibi korunur.",
+  "settings.agentBehaviour.addMcp.args.placeholder": "e.g.\n-y\n@modelcontextprotocol/server-filesystem\n/tmp",
+  "settings.agentBehaviour.addMcp.url": "Sunucu URL'si",
+  "settings.agentBehaviour.addMcp.url.placeholder": "e.g. http://localhost:3000/sse",
   "settings.agentBehaviour.mcpEmpty":
     "Yapılandırılmış MCP sunucusu yok. MCP sunucuları eklemek için opencode yapılandırma dosyasını düzenleyin.",
   "settings.agentBehaviour.workflowsPlaceholder": "İş akışları çalışma alanınızdaki iş akışı dosyaları ile yönetilir.",
