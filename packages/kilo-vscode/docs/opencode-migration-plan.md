@@ -42,23 +42,16 @@ This document tracks remaining work needed for feature parity with the old exten
 
 ---
 
-## Agent Behaviour Feature Parity
+## Agent Behaviour Tab Parity
 
-Settings and configuration features that control how the AI agent behaves. The legacy extension had extensive agent behaviour settings; many are now handled by the CLI backend but need extension UI, and some require new CLI support.
+The "Agent Behaviour" settings tab contains 5 sub-tabs in both the legacy and new extensions. The legacy tab was a combined 2800+ lines of UI; the new tab is ~820 lines. Each sub-tab has its own parity doc.
 
-| Feature                                                                             | Remaining Work                                                                               | Backend                                                                   | Priority |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------- |
-| [Custom Instructions & Prompts Tab](agent-behaviour/custom-instructions-prompts.md) | Implement Prompts tab: global custom instructions, per-action prompt templates               | CLI per-agent `prompt` + rule files; extension for global instructions UI | P1       |
-| [Auto-Approve Parity](agent-behaviour/auto-approve-parity.md)                       | YOLO mode, task budget limits (max requests/cost), command timeout, auto-approve keybinding  | CLI permission model + potential new CLI features                         | P1       |
-| [Custom Modes / Agent Creation](agent-behaviour/custom-modes-agent-creation.md)     | UI to create/edit custom agents with role definitions, tool groups, file restrictions        | CLI agent config; extension provides creation UI                          | P2       |
-| [Per-Agent Advanced Settings](agent-behaviour/per-agent-advanced-settings.md)       | Default variant, per-agent permissions, hidden/disable toggles, agent mode, color            | CLI supports all fields; extension needs settings UI                      | P2       |
-| [Provider-Specific Settings](agent-behaviour/provider-specific-settings.md)         | OpenRouter routing, Anthropic beta features, Bedrock cross-region, Ollama context size, etc. | CLI provider config options; extension needs per-provider settings forms  | P2       |
-| [Token & Request Budget Limits](agent-behaviour/token-budget-limits.md)             | Per-session request/cost limits, compaction threshold config, separate compaction model      | CLI `steps` partially covers; may need CLI features                       | P2       |
-| [MCP Server Creation & Editing](agent-behaviour/mcp-server-creation.md)             | Add/edit MCP servers, connection status, enable/disable, per-server tool allowlisting        | CLI owns MCP config; extension needs CRUD UI                              | P2       |
-| [Terminal Tab Settings](agent-behaviour/terminal-tab-settings.md)                   | Implement Terminal tab: command timeout, output limits, bash tool config                     | CLI bash tool config; extension provides settings forms                   | P2       |
-| [Context Management Settings](agent-behaviour/context-management-settings.md)       | File read limits, workspace context limits, diagnostic settings, condense threshold          | CLI handles context internally; expose configurable options               | P2       |
-| [Formatter & LSP Configuration](agent-behaviour/formatter-lsp-configuration.md)     | Per-language formatter config, per-server LSP config (currently simple on/off toggles)       | CLI supports detailed config; extension has toggle only                   | P3       |
-| [Experiments & Feature Flags](agent-behaviour/power-steering-experiments.md)        | Power steering, prevent focus disruption, custom tools, and other legacy experiments         | Mixed: CLI for agent experiments, extension for VS Code UX                | P3       |
+| Sub-Tab                                                               | Remaining Work                                                                                                                                                                        | Priority |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| [Modes / Agents](agent-behaviour/modes-subtab-parity.md)              | Agent selector not rendered (config panel inaccessible), create/rename/import/export modes, tool groups, when-to-use, system prompt preview, global custom instructions, org features | P1       |
+| [MCP Servers](agent-behaviour/mcp-server-creation.md)                 | Add/edit servers, connection status, enable/disable toggle, restart, per-server timeout, expandable detail (tools/resources/logs/auth)                                                | P2       |
+| [Rules & Workflows](agent-behaviour/rules-workflows-subtab-parity.md) | Rules: description text, global/workspace separation, per-rule toggles, new file creation, auto-discovery. Workflows: entire sub-tab is a stub                                        | P2/P3    |
+| Skills                                                                | Minor gaps: project/global separation, mode badge per skill. Covered by [Skills System](non-agent-features/skills-system.md)                                                          | P2       |
 
 ---
 

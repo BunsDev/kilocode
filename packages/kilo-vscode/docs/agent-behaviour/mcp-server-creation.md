@@ -1,48 +1,59 @@
-# MCP Server Creation & Editing
+# MCP Servers Sub-Tab Parity
 
 **Priority:** P2
 
-The MCP Servers sub-tab in Agent Behaviour settings can only view server names/commands and remove servers. There is no UI to add or edit MCP server configurations.
+The legacy MCP Servers sub-tab (842 lines) had full server lifecycle management. The new sub-tab can only view and remove servers.
 
-## Legacy Features
+## Side-by-Side Comparison
 
-### MCP Configuration UI
+| Feature                 | Legacy                           | New                                                           |
+| ----------------------- | -------------------------------- | ------------------------------------------------------------- |
+| View server list        | Name + source badge + status dot | Name + command/URL                                            |
+| Add server              | Via edit config file buttons     | Not available                                                 |
+| Remove server           | Delete button + confirmation     | Remove button + confirmation                                  |
+| Edit server config      | Via edit config file buttons     | Not available                                                 |
+| Connection status       | Colored dot (green/yellow/red)   | Not displayed                                                 |
+| Enable/disable toggle   | `ToggleSwitch` per server        | Not available                                                 |
+| Restart/refresh         | Per-server refresh button        | Not available                                                 |
+| Refresh all             | "Refresh All MCP Servers" button | Not available                                                 |
+| Edit Global MCP config  | Button to open file              | Not available                                                 |
+| Edit Project MCP config | Button to open file              | Not available                                                 |
+| Network timeout         | Per-server dropdown (15s–60min)  | Not available                                                 |
+| Server source badge     | Shows "global" / "project"       | Not displayed                                                 |
+| Empty state             | N/A                              | "No MCP servers configured. Edit the opencode config file..." |
 
-- Add new MCP servers with command, args, and environment variables
-- Edit existing server configurations
-- Per-server tool allowlisting (select which tools to auto-approve)
-- Connection status display per server (connected/disconnected/error)
-- Enable/disable individual servers without removing them
+### Expandable Server Detail (Legacy Only)
 
-### MCP Hub
+When a server was connected and enabled, expanding it showed 5 tabs:
 
-- Browse and install MCP servers from a registry
-- One-click install with configuration
+| Tab          | Content                                                               |
+| ------------ | --------------------------------------------------------------------- |
+| Tools        | List of MCP tools with tool count                                     |
+| Resources    | List of resources + resource templates with count                     |
+| Instructions | Server-provided instruction text (if present)                         |
+| Logs         | Error/log entries sorted by timestamp with count                      |
+| Auth         | OAuth debug info: auth status, token expiration, scopes, refresh info |
 
-## Current State in New Extension
-
-- MCP Servers sub-tab shows server name and command/URL
-- Remove button per server
-- No add/create UI in settings
-- MCP servers can be installed from the Marketplace (separate feature)
-- No connection status display
-- No per-server tool allowlisting
-- The CLI owns MCP lifecycle — configuration is in `opencode.json`
+The new extension has none of this expandable detail.
 
 ## Remaining Work
 
-- **Add MCP Server dialog**: Form to define a new MCP server with:
-  - Server name
-  - Transport type (stdio command vs. SSE URL)
-  - Command and arguments (for stdio)
-  - URL (for SSE/streamable HTTP)
-  - Environment variables
+### Important (P2)
+
+- **Add MCP Server dialog**: Form to define a new server with name, transport type (stdio/SSE), command+args or URL, environment variables. Write to CLI config via `updateConfig()`
 - **Edit MCP Server**: Allow modifying existing server configurations
-- **Connection status**: Display per-server connection state (connected/disconnected/error) — requires CLI to expose this via SSE or API
-- **Enable/disable toggle**: Per-server toggle without removing the configuration
-- **Per-server tool allowlisting**: If the CLI supports per-server tool allow/deny, expose it in the server detail view
-- **Write to CLI config**: Use the config update endpoint to persist MCP server changes
+- **Connection status indicators**: Display per-server connection state. Requires CLI to expose MCP connection status via API or SSE events
+- **Enable/disable toggle**: Per-server toggle that writes to CLI config without removing the server
+- **Restart/refresh button**: Per-server and "refresh all" buttons. Requires CLI endpoint to restart MCP servers
+- **Edit config file buttons**: Quick links to open global/project MCP config in the editor
+
+### Nice to Have (P3)
+
+- **Expandable server detail**: Show tools, resources, instructions, and logs per server when expanded. Requires CLI to expose per-server tool/resource/log data
+- **Network timeout per server**: If CLI supports per-server timeout config, expose it
+- **Server source badge**: Display whether server comes from global or project config
+- **OAuth/Auth tab**: Display auth status for OAuth-based MCP servers (depends on CLI support)
 
 ## Notes
 
-The Marketplace (marketplace.md) covers browsing and installing MCP servers from a registry. This document covers manual configuration — adding custom/private MCP servers and editing their settings. The `packages/app/` reference implementation may have MCP server management UI that can be ported.
+The mcp-and-mcp-hub.md doc in `non-agent-features/` tracks MCP configuration as a broader feature. This doc focuses specifically on the MCP Servers sub-tab within the Agent Behaviour settings tab. The Marketplace covers MCP server discovery and installation from a registry.
