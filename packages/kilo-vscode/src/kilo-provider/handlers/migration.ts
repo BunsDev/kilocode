@@ -1,155 +1,126 @@
-/**
- * Legacy migration handlers — extracted from KiloProvider.
- *
- * Manages the migration wizard for users upgrading from Kilo Code v5.x.
- * No vscode dependency — all vscode access is injected via MigrationContext.
- */
-
 import type { KiloClient } from "@kilocode/sdk/v2/client"
-import type { LegacyMigrationData, MigrationSelections } from "../../legacy-migration/legacy-types"
-import * as MigrationService from "../../legacy-migration/migration-service"
+import type {
+  MigrationSelections,
+  MigrationSessionProgress,
+  MigrationSessionSelection,
+} from "../../legacy-migration/legacy-types"
+import { runSessionBatch } from "../../legacy-migration/session-batch"
+import { migrate as migrateSession } from "../../legacy-migration/sessions/migrate"
+import { resolveSession } from "../../legacy-migration/task-store"
+import { detectRooCodeSessions, type RooImportSource } from "../../roo-import/service"
 
-/** Subset of vscode.ExtensionContext needed by migration handlers. */
 interface MigrationExtensionContext {
   globalState: {
     get<T>(key: string): T | undefined
     get<T>(key: string, defaultValue: T): T
     update(key: string, value: unknown): PromiseLike<void>
   }
-  secrets: {
-    get(key: string): PromiseLike<string | undefined>
-    store(key: string, value: string): PromiseLike<void>
-    delete(key: string): PromiseLike<void>
-  }
   globalStorageUri: { fsPath: string }
+}
+
+export type MigrationSource = "roo"
+export type MigrationCacheEntry = { operationId: string; source: "roo"; data: RooImportSource | null }
+export type MigrationCache = Map<string, MigrationCacheEntry>
+
+export function getMigrationCache(cache: MigrationCache, source: MigrationSource, operationId: string) {
+  const entry = cache.get(operationId)
+  return entry?.source === source ? entry : undefined
 }
 
 export interface MigrationContext {
   readonly client: KiloClient | null
   readonly extensionContext: MigrationExtensionContext | undefined
   postMessage(msg: unknown): void
-  cachedLegacyData: LegacyMigrationData | null
-  migrationCheckInFlight: boolean
-  disposeGlobal(): Promise<void>
+  refreshSessions(): void
+  migrationCache: MigrationCache
 }
 
-/**
- * Check for legacy data on first run and auto-navigate to the migration wizard
- * if the user has not yet been prompted.
- */
-export async function checkAndShowMigrationWizard(ctx: MigrationContext): Promise<void> {
-  if (!ctx.extensionContext) return
-  if (ctx.migrationCheckInFlight) return
-  // MigrationService.getMigrationStatus accepts the full ExtensionContext shape
-  const status = MigrationService.getMigrationStatus(
-    ctx.extensionContext as Parameters<typeof MigrationService.getMigrationStatus>[0],
-  )
-  if (status) return // already prompted (skipped or completed)
-
-  ctx.migrationCheckInFlight = true
-  const data = await MigrationService.detectLegacyData(
-    ctx.extensionContext as Parameters<typeof MigrationService.detectLegacyData>[0],
-  )
-  ctx.migrationCheckInFlight = false
-
-  if (!data.hasData) return
-
-  // Cache so migrate() doesn't re-read from SecretStorage/disk
-  ctx.cachedLegacyData = data
-
-  console.log("[Kilo New] KiloProvider: 🔄 Legacy data detected, showing migration wizard")
-  ctx.postMessage({ type: "navigate", view: "migration" })
+function postSessionProgress(ctx: MigrationContext, operationId: string, progress: MigrationSessionProgress): void {
   ctx.postMessage({
-    type: "legacyMigrationData",
-    data: {
-      providers: data.providers,
-      mcpServers: data.mcpServers,
-      customModes: data.customModes,
-      defaultModel: data.defaultModel,
-      settings: data.settings,
-    },
+    type: "migrationSessionProgress",
+    source: "roo",
+    operationId,
+    session: progress.session,
+    index: progress.index,
+    total: progress.total,
+    phase: progress.phase,
+    error: progress.error,
   })
 }
 
-/** Send the detected legacy data to the webview on explicit request. */
-export async function handleRequestLegacyMigrationData(ctx: MigrationContext): Promise<void> {
-  if (!ctx.extensionContext) return
-  const data = await MigrationService.detectLegacyData(
-    ctx.extensionContext as Parameters<typeof MigrationService.detectLegacyData>[0],
-  )
-  ctx.cachedLegacyData = data
-  ctx.postMessage({
-    type: "legacyMigrationData",
-    data: {
-      providers: data.providers,
-      mcpServers: data.mcpServers,
-      customModes: data.customModes,
-      defaultModel: data.defaultModel,
-      settings: data.settings,
-    },
-  })
-}
-
-/** Run the migration for the selected items. */
-export async function handleStartLegacyMigration(
+export async function handleRequestMigrationData(
   ctx: MigrationContext,
-  selections: MigrationSelections,
+  source: MigrationSource,
+  operationId: string,
+): Promise<void> {
+  if (source !== "roo" || !ctx.extensionContext) return
+  for (const key of ctx.migrationCache.keys()) {
+    if (key !== operationId) ctx.migrationCache.delete(key)
+  }
+  const roo = await detectRooCodeSessions(ctx.extensionContext as Parameters<typeof detectRooCodeSessions>[0])
+  ctx.migrationCache.set(operationId, { operationId, source, data: roo })
+  ctx.postMessage({
+    type: "migrationData",
+    source,
+    operationId,
+    data: { sessions: roo?.sessions ?? [] },
+  })
+}
+
+async function startRooMigration(
+  ctx: MigrationContext,
+  operationId: string,
+  selections: { sessions?: MigrationSessionSelection[] },
 ): Promise<void> {
   if (!ctx.extensionContext || !ctx.client) return
-  try {
-    const results = await MigrationService.migrate(
-      ctx.extensionContext as Parameters<typeof MigrationService.migrate>[0],
-      ctx.client,
-      selections,
-      (item, status, message) => {
-        ctx.postMessage({ type: "legacyMigrationProgress", item, status, message })
-      },
-      ctx.cachedLegacyData?.settings,
-    )
-
-    // Dispose all instances after migration
-    // Reloading the data will be handled once the server replies with a global.disposed event
-    await ctx.disposeGlobal()
-
-    // Only mark as completed if at least one item succeeded — if everything failed
-    // the user can still re-run migration via Settings → About.
-    const success = results.some((r) => r.status === "success")
-
-    if (success) {
-      await MigrationService.setMigrationStatus(
-        ctx.extensionContext as Parameters<typeof MigrationService.setMigrationStatus>[0],
-        "completed",
-      )
-    }
-
-    ctx.postMessage({ type: "legacyMigrationComplete", results })
-  } catch (error) {
-    console.error("[Kilo New] KiloProvider: ❌ Migration failed", error)
+  const cached = getMigrationCache(ctx.migrationCache, "roo", operationId)
+  const source = cached
+    ? cached.data
+    : await detectRooCodeSessions(ctx.extensionContext as Parameters<typeof detectRooCodeSessions>[0])
+  if (!cached) ctx.migrationCache.set(operationId, { operationId, source: "roo", data: source })
+  if (!source) {
     ctx.postMessage({
-      type: "legacyMigrationComplete",
+      type: "migrationComplete",
+      source: "roo",
+      operationId,
       results: [
-        {
-          item: "Migration",
-          category: "settings",
-          status: "error",
-          message: error instanceof Error ? error.message : String(error),
-        },
+        { item: "Roo Code sessions", category: "session", status: "warning", message: "No Roo Code sessions found." },
       ],
     })
+    return
   }
+
+  const results = await runSessionBatch({
+    selections: selections.sessions ?? [],
+    sessions: source.sessions,
+    resolve: (id) => resolveSession(source.catalog, id),
+    migrate: (selection, resolved, progress) =>
+      migrateSession(
+        selection,
+        ctx.extensionContext as Parameters<typeof migrateSession>[1],
+        ctx.client as KiloClient,
+        progress,
+        resolved,
+      ),
+    onProgress: (item, status, message) => {
+      ctx.postMessage({ type: "migrationProgress", source: "roo", operationId, item, status, message })
+    },
+    onSessionProgress: (progress) => postSessionProgress(ctx, operationId, progress),
+  })
+
+  ctx.postMessage({ type: "migrationComplete", source: "roo", operationId, results })
 }
 
-/** Record that the user skipped migration. */
-export async function handleSkipLegacyMigration(ctx: MigrationContext): Promise<void> {
-  if (!ctx.extensionContext) return
-  await MigrationService.setMigrationStatus(
-    ctx.extensionContext as Parameters<typeof MigrationService.setMigrationStatus>[0],
-    "skipped",
-  )
-}
-
-/** Clear legacy data from SecretStorage and globalState after user opts in. */
-export async function handleClearLegacyData(ctx: MigrationContext): Promise<void> {
-  if (!ctx.extensionContext) return
-  await MigrationService.clearLegacyData(ctx.extensionContext as Parameters<typeof MigrationService.clearLegacyData>[0])
+export async function handleStartMigration(
+  ctx: MigrationContext,
+  source: MigrationSource,
+  operationId: string,
+  selections: MigrationSelections,
+): Promise<void> {
+  if (source !== "roo") return
+  try {
+    await startRooMigration(ctx, operationId, selections)
+  } finally {
+    ctx.migrationCache.delete(operationId)
+  }
 }

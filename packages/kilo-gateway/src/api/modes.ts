@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { KILO_API_BASE, MODELS_FETCH_TIMEOUT_MS } from "./constants.js"
-import { DEFAULT_HEADERS } from "../headers.js"
+import { getDefaultHeaders } from "../headers.js"
 
 /**
  * Group entry in an organization mode config.
@@ -70,14 +70,13 @@ export async function fetchOrganizationModes(token: string, organizationId: stri
     const url = `${KILO_API_BASE}/api/organizations/${encodeURIComponent(organizationId)}/modes`
     const response = await fetch(url, {
       headers: {
-        ...DEFAULT_HEADERS,
+        ...getDefaultHeaders(),
         Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS),
     })
 
     if (!response.ok) {
-      console.warn(`[Kilo Gateway] Failed to fetch organization modes: ${response.status}`)
       return []
     }
 
@@ -85,7 +84,6 @@ export async function fetchOrganizationModes(token: string, organizationId: stri
     const parsed = ResponseSchema.safeParse(json)
 
     if (!parsed.success) {
-      console.warn("[Kilo Gateway] Organization modes response validation failed:", parsed.error.format())
       return []
     }
 

@@ -7,8 +7,8 @@
  */
 
 import { createSignal, createMemo, createEffect, ParentComponent, Accessor } from "solid-js"
-import { I18nProvider } from "@kilocode/kilo-ui/context"
-import type { UiI18nKey, UiI18nParams } from "@kilocode/kilo-ui/context"
+import { I18nProvider, pluralCategory, pluralKey } from "@kilocode/kilo-ui/context"
+import type { UiI18nKey, UiI18nParams, UiI18nPluralKey } from "@kilocode/kilo-ui/context"
 import { dict as uiEn } from "@kilocode/kilo-ui/i18n/en"
 import { dict as uiZh } from "@kilocode/kilo-ui/i18n/zh"
 import { dict as uiZht } from "@kilocode/kilo-ui/i18n/zht"
@@ -27,6 +27,8 @@ import { dict as uiTh } from "@kilocode/kilo-ui/i18n/th"
 import { dict as uiBs } from "@kilocode/kilo-ui/i18n/bs"
 import { dict as uiTr } from "@kilocode/kilo-ui/i18n/tr"
 import { dict as uiNl } from "@kilocode/kilo-ui/i18n/nl"
+import { dict as uiUk } from "@kilocode/kilo-ui/i18n/uk"
+import { dict as uiIt } from "@kilocode/kilo-ui/i18n/it"
 import { dict as appEn } from "../i18n/en"
 import { dict as appZh } from "../i18n/zh"
 import { dict as appZht } from "../i18n/zht"
@@ -45,6 +47,9 @@ import { dict as appTh } from "../i18n/th"
 import { dict as appBs } from "../i18n/bs"
 import { dict as appTr } from "../i18n/tr"
 import { dict as appNl } from "../i18n/nl"
+import { dict as appUk } from "../i18n/uk"
+import { dict as appIt } from "../i18n/it"
+import { dict as appFa } from "../i18n/fa"
 import { dict as amEn } from "../../agent-manager/i18n/en"
 import { dict as amZh } from "../../agent-manager/i18n/zh"
 import { dict as amZht } from "../../agent-manager/i18n/zht"
@@ -63,6 +68,9 @@ import { dict as amTh } from "../../agent-manager/i18n/th"
 import { dict as amBs } from "../../agent-manager/i18n/bs"
 import { dict as amTr } from "../../agent-manager/i18n/tr"
 import { dict as amNl } from "../../agent-manager/i18n/nl"
+import { dict as amUk } from "../../agent-manager/i18n/uk"
+import { dict as amIt } from "../../agent-manager/i18n/it"
+import { dict as amFa } from "../../agent-manager/i18n/fa"
 import { dict as kiloEn } from "@kilocode/kilo-i18n/en"
 import { dict as kiloZh } from "@kilocode/kilo-i18n/zh"
 import { dict as kiloZht } from "@kilocode/kilo-i18n/zht"
@@ -81,13 +89,15 @@ import { dict as kiloTh } from "@kilocode/kilo-i18n/th"
 import { dict as kiloBs } from "@kilocode/kilo-i18n/bs"
 import { dict as kiloTr } from "@kilocode/kilo-i18n/tr"
 import { dict as kiloNl } from "@kilocode/kilo-i18n/nl"
+import { dict as kiloUk } from "@kilocode/kilo-i18n/uk"
+import { dict as kiloIt } from "@kilocode/kilo-i18n/it"
 import { useVSCode } from "./vscode"
 import { normalizeLocale as _normalizeLocale, resolveTemplate as _resolveTemplate } from "./language-utils"
 
 export type { Locale } from "./language-utils"
 export { LOCALES } from "./language-utils"
 import type { Locale } from "./language-utils"
-import { LOCALES } from "./language-utils"
+import { LOCALES, RTL_LOCALES, localeToBcp47 } from "./language-utils"
 
 export const LOCALE_LABELS: Record<Locale, string> = {
   en: "English",
@@ -108,6 +118,9 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   bs: "Bosanski",
   tr: "Türkçe",
   nl: "Nederlands",
+  uk: "Українська",
+  it: "Italiano",
+  fa: "فارسی",
 }
 
 // Merge 4 dict layers: app + ui + kilo + agent manager (kilo and agent manager override last)
@@ -131,6 +144,11 @@ const dicts: Record<Locale, Record<string, string>> = {
   bs: { ...base, ...appBs, ...uiBs, ...kiloBs, ...amEn, ...amBs },
   tr: { ...base, ...appTr, ...uiTr, ...kiloTr, ...amEn, ...amTr },
   nl: { ...base, ...appNl, ...uiNl, ...kiloNl, ...amEn, ...amNl },
+  uk: { ...base, ...appUk, ...uiUk, ...kiloUk, ...amEn, ...amUk },
+  it: { ...base, ...appIt, ...uiIt, ...kiloIt, ...amEn, ...amIt },
+  // Persian (Kilo fork addition). Only app + agent-manager layers are localized;
+  // the upstream ui/kilo layers fall back to English via `base`.
+  fa: { ...base, ...appFa, ...amEn, ...amFa },
 }
 
 function normalizeLocale(lang: string): Locale {
@@ -176,10 +194,19 @@ export const LanguageProvider: ParentComponent<LanguageProviderProps> = (props) 
 
   const dict = createMemo(() => dicts[locale()] ?? dicts.en)
 
+  // Update <html lang> and <html dir> when locale changes
+  createEffect(() => {
+    const loc = locale()
+    document.documentElement.lang = localeToBcp47(loc)
+    document.documentElement.dir = RTL_LOCALES.has(loc) ? "rtl" : "ltr"
+  })
+
   const t = (key: UiI18nKey, params?: UiI18nParams) => {
-    const text = (dict() as Record<string, string>)[key] ?? String(key)
+    const text = (dict() as Record<string, string>)[key] ?? (dicts.en as Record<string, string>)[key] ?? String(key)
     return resolveTemplate(text, params)
   }
+  const plural = (key: UiI18nPluralKey, count: number, params?: UiI18nParams) =>
+    t(pluralKey(key, pluralCategory(localeToBcp47(locale()), count)), { ...params, count })
 
   const setLocale = (next: Locale | "") => {
     setUserOverride(next)
@@ -190,7 +217,7 @@ export const LanguageProvider: ParentComponent<LanguageProviderProps> = (props) 
     <LanguageContext.Provider
       value={{ locale, setLocale, userOverride, t: t as (key: string, params?: UiI18nParams) => string }}
     >
-      <I18nProvider value={{ locale: () => locale(), t }}>{props.children}</I18nProvider>
+      <I18nProvider value={{ locale: () => locale(), t, plural }}>{props.children}</I18nProvider>
     </LanguageContext.Provider>
   )
 }
@@ -198,7 +225,7 @@ export const LanguageProvider: ParentComponent<LanguageProviderProps> = (props) 
 // Expose locale + setLocale for the LanguageTab
 import { createContext, useContext } from "solid-js"
 
-interface LanguageContextValue {
+export interface LanguageContextValue {
   locale: Accessor<Locale>
   setLocale: (locale: Locale | "") => void
   userOverride: Accessor<Locale | "">

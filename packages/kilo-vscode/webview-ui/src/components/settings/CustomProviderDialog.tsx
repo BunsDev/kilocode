@@ -3,162 +3,168 @@ import { useDialog } from "@kilocode/kilo-ui/context/dialog"
 import { Dialog } from "@kilocode/kilo-ui/dialog"
 import { IconButton } from "@kilocode/kilo-ui/icon-button"
 import { ProviderIcon } from "@kilocode/kilo-ui/provider-icon"
+import { Select } from "@kilocode/kilo-ui/select"
+import { Spinner } from "@kilocode/kilo-ui/spinner"
 import { TextField } from "@kilocode/kilo-ui/text-field"
 import { showToast } from "@kilocode/kilo-ui/toast"
-import { For, onCleanup } from "solid-js"
-import { createStore } from "solid-js/store"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { useConfig } from "../../context/config"
 import { useLanguage } from "../../context/language"
 import { useProvider } from "../../context/provider"
 import { useVSCode } from "../../context/vscode"
+import type { ExtensionMessage, ProviderAuthState, ProviderConfig } from "../../types/messages"
 import { createProviderAction } from "../../utils/provider-action"
+import { configMessage } from "../../utils/open-config"
+import { MASKED_CUSTOM_PROVIDER_KEY, resolveCustomProviderKey } from "../../../../src/shared/custom-provider"
+import {
+  CUSTOM_PROVIDER_PACKAGE,
+  isCustomProviderPackage,
+  type CustomProviderPackage,
+} from "../../../../src/shared/provider-model"
+import { ModelCard } from "./CustomProviderModelCard"
+import type {
+  ChatTemplateArgsValue,
+  EnableThinkingValue,
+  Modalities,
+  Modality,
+  ModelEntry,
+  OutputEffortValue,
+  ReasoningEffortValue,
+  ThinkingTypeValue,
+  VariantEntry,
+} from "./CustomProviderModelCard"
+import { validateCustomProvider } from "./CustomProviderValidation"
+import type { FormErrors, FormState, HeaderRow } from "./CustomProviderValidation"
+const DEBOUNCE_MS = 500
+const SEARCH_DEBOUNCE_MS = 150
 
-const PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
-const OPENAI_COMPATIBLE = "@ai-sdk/openai-compatible"
+const PACKAGE_OPTIONS: Array<{ value: CustomProviderPackage; label: string }> = [
+  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible" },
+  { value: "@ai-sdk/openai", label: "OpenAI Responses" },
+  { value: "@ai-sdk/anthropic", label: "Anthropic Messages" },
+]
 
-type Translator = ReturnType<typeof useLanguage>["t"]
-
-type ModelRow = {
-  id: string
-  name: string
+/** Subsequence fuzzy match — "gpt4o" matches "gpt-4o-mini". */
+function fuzzy(query: string, target: string) {
+  const q = query.toLowerCase()
+  const t = target.toLowerCase()
+  let qi = 0
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++
+  }
+  return qi === q.length
 }
 
-type HeaderRow = {
-  key: string
-  value: string
+type FetchedModel = { id: string; name: string }
+type RawModel = {
+  name?: string
+  reasoning?: boolean
+  modalities?: { input?: unknown; output?: unknown }
+  variants?: Record<string, Record<string, unknown>>
 }
 
-type FormState = {
+// Keep this aligned with the CLI provider schema; the UI only exposes image.
+const MODES = new Set<Modality>(["text", "audio", "image", "video", "pdf"])
+
+function list(raw: unknown): Modality[] | undefined {
+  if (!Array.isArray(raw)) return
+  const set = new Set<Modality>()
+  raw.forEach((item) => {
+    if (typeof item === "string" && MODES.has(item as Modality)) set.add(item as Modality)
+  })
+  return set.size ? [...set] : undefined
+}
+
+function modes(raw: unknown): Modalities {
+  if (!raw || typeof raw !== "object") return {}
+  const obj = raw as { input?: unknown; output?: unknown }
+  const input = list(obj.input)
+  const output = list(obj.output)
+  return {
+    ...(input ? { input } : {}),
+    ...(output ? { output } : {}),
+  }
+}
+
+function parseVariant([name, cfg]: [string, Record<string, unknown>]): VariantEntry {
+  return {
+    name,
+    raw: cfg,
+    enableThinking: typeof cfg.enable_thinking === "boolean" ? cfg.enable_thinking : undefined,
+    thinking:
+      typeof cfg.thinking === "object" && cfg.thinking !== null
+        ? ((cfg.thinking as { type?: string }).type as ThinkingTypeValue)
+        : undefined,
+    splitReasoning: typeof cfg.reasoning_split === "boolean" ? cfg.reasoning_split : undefined,
+    reasoningEffort:
+      typeof cfg.reasoningEffort === "string" ? (cfg.reasoningEffort as ReasoningEffortValue) : undefined,
+    outputEffort: typeof cfg.effort === "string" ? (cfg.effort as OutputEffortValue) : undefined,
+    chatTemplateArgs:
+      typeof cfg.chat_template_args === "object" && cfg.chat_template_args !== null
+        ? ((cfg.chat_template_args as { enable_thinking?: boolean }).enable_thinking as ChatTemplateArgsValue)
+        : undefined,
+  }
+}
+
+function initModels(cfg: ProviderConfig | undefined): ModelEntry[] {
+  const empty = { id: "", name: "", reasoning: false, supportsImages: false, modalities: {}, variants: [] }
+  if (!cfg?.models || typeof cfg.models !== "object") return [{ ...empty }]
+  const entries = Object.entries(cfg.models)
+  if (entries.length === 0) return [{ ...empty }]
+  return entries.map(([id, model]) => {
+    const raw = model as RawModel
+    const modalities = modes(raw.modalities)
+    const input = modalities.input ?? []
+    return {
+      id,
+      name: raw.name ?? id,
+      reasoning: raw.reasoning ?? false,
+      supportsImages: input.includes("image"),
+      modalities,
+      variants: Object.entries(raw.variants ?? {}).map(parseVariant),
+    }
+  })
+}
+
+function initHeaders(cfg: ProviderConfig | undefined): HeaderRow[] {
+  const opts = cfg?.options as { headers?: Record<string, string> } | undefined
+  const headers = opts?.headers
+  if (!headers || typeof headers !== "object") return [{ key: "", value: "" }]
+  const entries = Object.entries(headers)
+  if (entries.length === 0) return [{ key: "", value: "" }]
+  return entries.map(([key, value]) => ({ key, value }))
+}
+
+type ExistingProvider = {
   providerID: string
   name: string
-  baseURL: string
-  apiKey: string
-  models: ModelRow[]
-  headers: HeaderRow[]
-  saving: boolean
+  config: ProviderConfig
 }
 
-type FormErrors = {
-  providerID: string | undefined
-  name: string | undefined
-  baseURL: string | undefined
-  models: Array<{ id?: string; name?: string }>
-  headers: Array<{ key?: string; value?: string }>
+function resolveAuth(existing: ExistingProvider | undefined, states: Record<string, ProviderAuthState>) {
+  if (!existing || existing.config.env?.length) return
+  return states[existing.providerID]
 }
 
-type ValidateArgs = {
-  form: FormState
-  t: Translator
-  disabledProviders: string[]
-  existingProviderIDs: Set<string>
-}
-
-function validateCustomProvider(input: ValidateArgs) {
-  const providerID = input.form.providerID.trim()
-  const name = input.form.name.trim()
-  const baseURL = input.form.baseURL.trim()
-  const apiKey = input.form.apiKey.trim()
-
-  const env = apiKey.match(/^\{env:([^}]+)\}$/)?.[1]?.trim()
-  const key = apiKey && !env ? apiKey : undefined
-
-  const idError = !providerID
-    ? input.t("provider.custom.error.providerID.required")
-    : !PROVIDER_ID.test(providerID)
-      ? input.t("provider.custom.error.providerID.format")
-      : undefined
-
-  const nameError = !name ? input.t("provider.custom.error.name.required") : undefined
-  const urlError = !baseURL
-    ? input.t("provider.custom.error.baseURL.required")
-    : !/^https?:\/\//.test(baseURL)
-      ? input.t("provider.custom.error.baseURL.format")
-      : undefined
-
-  const disabled = input.disabledProviders.includes(providerID)
-  const existsError = idError
-    ? undefined
-    : input.existingProviderIDs.has(providerID) && !disabled
-      ? input.t("provider.custom.error.providerID.exists")
-      : undefined
-
-  const seenModels = new Set<string>()
-  const modelErrors = input.form.models.map((m) => {
-    const id = m.id.trim()
-    const modelIdError = !id
-      ? input.t("provider.custom.error.required")
-      : seenModels.has(id)
-        ? input.t("provider.custom.error.duplicate")
-        : (() => {
-            seenModels.add(id)
-            return undefined
-          })()
-    const modelNameError = !m.name.trim() ? input.t("provider.custom.error.required") : undefined
-    return { id: modelIdError, name: modelNameError }
-  })
-  const modelsValid = modelErrors.every((m) => !m.id && !m.name)
-  const models = Object.fromEntries(input.form.models.map((m) => [m.id.trim(), { name: m.name.trim() }]))
-
-  const seenHeaders = new Set<string>()
-  const headerErrors = input.form.headers.map((h) => {
-    const key = h.key.trim()
-    const value = h.value.trim()
-
-    if (!key && !value) return {}
-    const keyError = !key
-      ? input.t("provider.custom.error.required")
-      : seenHeaders.has(key.toLowerCase())
-        ? input.t("provider.custom.error.duplicate")
-        : (() => {
-            seenHeaders.add(key.toLowerCase())
-            return undefined
-          })()
-    const valueError = !value ? input.t("provider.custom.error.required") : undefined
-    return { key: keyError, value: valueError }
-  })
-  const headersValid = headerErrors.every((h) => !h.key && !h.value)
-  const headers = Object.fromEntries(
-    input.form.headers
-      .map((h) => ({ key: h.key.trim(), value: h.value.trim() }))
-      .filter((h) => !!h.key && !!h.value)
-      .map((h) => [h.key, h.value]),
-  )
-
-  const errors: FormErrors = {
-    providerID: idError ?? existsError,
-    name: nameError,
-    baseURL: urlError,
-    models: modelErrors,
-    headers: headerErrors,
-  }
-
-  const ok = !idError && !existsError && !nameError && !urlError && modelsValid && headersValid
-  if (!ok) return { errors }
-
-  const options = {
-    baseURL,
-    ...(Object.keys(headers).length ? { headers } : {}),
-  }
-
+function initForm(existing: ExistingProvider | undefined, auth: ProviderAuthState | undefined): FormState {
+  const npm = existing?.config?.npm
   return {
-    errors,
-    result: {
-      providerID,
-      name,
-      key,
-      config: {
-        npm: OPENAI_COMPATIBLE,
-        name,
-        ...(env ? { env: [env] } : {}),
-        options,
-        models,
-      },
-    },
+    providerID: existing?.providerID ?? "",
+    name: existing?.name ?? "",
+    npm: isCustomProviderPackage(npm) ? npm : CUSTOM_PROVIDER_PACKAGE,
+    baseURL: (existing?.config?.options as { baseURL?: string } | undefined)?.baseURL ?? "",
+    apiKey: resolveCustomProviderKey(auth),
+    models: initModels(existing?.config),
+    headers: initHeaders(existing?.config),
+    saving: false,
   }
 }
 
-interface CustomProviderDialogProps {
+export interface CustomProviderDialogProps {
   onBack?: () => void
+  /** When set, the dialog opens in edit mode with pre-filled values. */
+  existing?: ExistingProvider
 }
 
 const CustomProviderDialog = (props: CustomProviderDialogProps) => {
@@ -170,23 +176,258 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
   const action = createProviderAction(vscode)
   onCleanup(action.dispose)
 
-  const [form, setForm] = createStore<FormState>({
-    providerID: "",
-    name: "",
-    baseURL: "",
-    apiKey: "",
-    models: [{ id: "", name: "" }],
-    headers: [{ key: "", value: "" }],
-    saving: false,
-  })
+  const editing = () => !!props.existing
+
+  const auth = resolveAuth(props.existing, provider.authStates())
+  const [form, setForm] = createStore<FormState>(initForm(props.existing, auth))
 
   const [errors, setErrors] = createStore<FormErrors>({
     providerID: undefined,
     name: undefined,
     baseURL: undefined,
-    models: [{}],
-    headers: [{}],
+    models: form.models.map((m) => ({ variants: m.variants.map(() => ({})) })),
+    headers: form.headers.map(() => ({})),
   })
+  const [apiTouched, setApiTouched] = createSignal(false)
+
+  // ── Fetch models state ──────────────────────────────────────────────
+
+  const [fetching, setFetching] = createSignal(false)
+  const [fetchError, setFetchError] = createSignal<string>()
+  const [fetchedModels, setFetchedModels] = createSignal<FetchedModel[]>()
+  const [selected, setSelected] = createSignal<Set<string>>(new Set())
+  const [fetchStatus, setFetchStatus] = createSignal<string>()
+
+  // Search within fetched models
+  const [search, setSearch] = createSignal("")
+  const [debouncedSearch, setDebouncedSearch] = createSignal("")
+
+  createEffect(() => {
+    const q = search()
+    const timer = setTimeout(() => setDebouncedSearch(q), SEARCH_DEBOUNCE_MS)
+    onCleanup(() => clearTimeout(timer))
+  })
+
+  const filtered = createMemo(() => {
+    const models = fetchedModels()
+    if (!models) return []
+    const q = debouncedSearch()
+    if (!q) return models
+    return models.filter((m) => fuzzy(q, m.id) || fuzzy(q, m.name))
+  })
+
+  // ── Auto-fetch on debounce ──────────────────────────────────────────
+
+  // Dedicated signals for the URL and API key drive the auto-fetch effect.
+  // We avoid reading form.baseURL / form.apiKey inside createEffect because
+  // SolidJS store proxies track at the property level — any store write
+  // (including setForm("models", ...)) invalidates effects that read from
+  // the same store, causing unwanted re-runs that wipe the model picker.
+  const [fetchPackage, setFetchPackage] = createSignal(form.npm)
+  const [fetchURL, setFetchURL] = createSignal(form.baseURL)
+  const [fetchKey, setFetchKey] = createSignal("")
+  let fetchVersion = 0
+
+  createEffect(() => {
+    const npm = fetchPackage()
+    const url = fetchURL()
+    const key = fetchKey()
+    void key // subscribe to key changes without using the value here
+
+    // Clear previous results whenever URL or key changes
+    setFetchedModels(undefined)
+    setFetchError(undefined)
+    setFetchStatus(undefined)
+    setSearch("")
+
+    if (npm === "@ai-sdk/anthropic" || !/^https?:\/\//.test(url.trim())) return
+
+    fetchVersion++
+    const version = fetchVersion
+    const timer = setTimeout(() => {
+      if (version === fetchVersion) doFetch()
+    }, DEBOUNCE_MS)
+    onCleanup(() => clearTimeout(timer))
+  })
+
+  // ── Core fetch logic ────────────────────────────────────────────────
+
+  function doFetch() {
+    // Snapshot all values from signals/store before entering async.
+    // This avoids reading the store proxy inside callbacks, which could
+    // subscribe to unrelated store properties and cause re-render loops.
+    const url = fetchURL().trim()
+    const raw = fetchKey().trim()
+    const env = raw.match(/^\{env:([^}]+)\}$/)?.[1]?.trim()
+    const apiKey = raw && !env ? raw : undefined
+    // When editing an existing provider with the key field untouched, the
+    // webview has no key to send — keys are stripped before provider data
+    // reaches it. Send the providerID so the extension can authenticate the
+    // fetch with the stored key (#10139). Anything typed into the field
+    // (a key or {env:VAR} syntax) takes precedence.
+    const providerID = !raw && props.existing ? props.existing.providerID : undefined
+    const existing = new Set(form.models.map((m) => m.id.trim().toLowerCase()).filter(Boolean))
+
+    const hdrs = form.headers
+      .map((h) => ({ key: h.key.trim(), value: h.value.trim() }))
+      .filter((h) => !!h.key && !!h.value)
+    const headers = hdrs.length > 0 ? Object.fromEntries(hdrs.map((h) => [h.key, h.value])) : undefined
+
+    // Bump version so any in-flight response from a previous fetch is ignored
+    fetchVersion++
+    const version = fetchVersion
+
+    setFetching(true)
+    setFetchError(undefined)
+    setFetchedModels(undefined)
+    setFetchStatus(undefined)
+    setSearch("")
+
+    const rid = crypto.randomUUID()
+
+    const unsub = vscode.onMessage((msg: ExtensionMessage) => {
+      if (msg.type !== "customProviderModelsFetched") return
+      if (!("requestId" in msg) || msg.requestId !== rid) return
+      unsub()
+
+      // Stale response — a newer fetch was triggered while this one was in-flight
+      if (version !== fetchVersion) return
+
+      setFetching(false)
+
+      if (msg.error) {
+        setFetchError(msg.auth ? language.t("provider.custom.models.fetch.authError") : msg.error)
+        return
+      }
+
+      const models = msg.models ?? []
+      if (models.length === 0) {
+        setFetchError(language.t("provider.custom.models.fetch.empty"))
+        return
+      }
+
+      // Filter using the snapshot taken at fetch time (trimmed, case-insensitive)
+      const fresh = models.filter((m) => !existing.has(m.id.trim().toLowerCase()))
+
+      if (fresh.length === 0) {
+        setFetchStatus(language.t("provider.custom.models.fetch.allExist"))
+        return
+      }
+
+      // Pre-select all and show the picker
+      setSelected(new Set(fresh.map((m) => m.id)))
+      setFetchedModels(fresh)
+    })
+
+    vscode.postMessage({
+      type: "fetchCustomProviderModels",
+      requestId: rid,
+      baseURL: url,
+      apiKey,
+      providerID,
+      headers,
+    })
+  }
+
+  // ── Model picker actions ────────────────────────────────────────────
+
+  function toggleModel(id: string) {
+    const next = new Set(selected())
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelected(next)
+  }
+
+  function selectAll() {
+    const next = new Set(selected())
+    for (const m of filtered()) next.add(m.id)
+    setSelected(next)
+  }
+
+  function deselectAll() {
+    const next = new Set(selected())
+    for (const m of filtered()) next.delete(m.id)
+    setSelected(next)
+  }
+
+  function count() {
+    return selected().size
+  }
+
+  function addSelected() {
+    const models = fetchedModels()
+    if (!models) return
+    const sel = selected()
+    const picked = models.filter((m) => sel.has(m.id))
+    if (picked.length === 0) return
+
+    // Replace the single empty row or append
+    const row = form.models[0]
+    const empty = form.models.length === 1 && !!row && !row.id.trim() && !row.name.trim()
+    // Dedup against models already in the form (trimmed, case-insensitive). The
+    // picker is built from a fetch-time snapshot, so a model the user typed
+    // manually after fetching hasn't been filtered out yet.
+    const existing = new Set(form.models.map((m) => m.id.trim().toLowerCase()).filter(Boolean))
+    const toAdd = picked.filter((m) => {
+      const key = m.id.trim().toLowerCase()
+      if (!key || existing.has(key)) {
+        return false
+      }
+      existing.add(key)
+      return true
+    })
+
+    const defaults = (m: FetchedModel): ModelEntry => ({
+      ...m,
+      reasoning: false,
+      supportsImages: false,
+      modalities: {},
+      variants: [],
+    })
+    const merged = empty ? toAdd.map(defaults) : [...form.models, ...toAdd.map(defaults)]
+
+    if (toAdd.length > 0) {
+      setForm("models", merged)
+      setErrors(
+        "models",
+        merged.map((m) => ({ variants: m.variants.map(() => ({})) })),
+      )
+    }
+
+    // Keep the picker open with the un-picked models so the user can keep adding.
+    // Remove every selected model, including ones skipped as duplicates, so the
+    // user isn't re-prompted to add them. Only close when nothing is left.
+    const pickedIds = new Set(picked.map((m) => m.id))
+    const remaining = models.filter((m) => !pickedIds.has(m.id))
+
+    if (toAdd.length > 0) {
+      // Count only models actually added, not duplicates that were skipped.
+      setFetchStatus(language.t("provider.custom.models.fetch.added", { count: String(toAdd.length) }))
+    } else if (remaining.length === 0) {
+      // Nothing added and nothing left in the picker; every fetched model exists.
+      setFetchStatus(language.t("provider.custom.models.fetch.allExist"))
+    } else {
+      // The selected models already existed but other fetched models remain;
+      // avoid implying everything was added. Dropping them from the picker is
+      // the feedback. Clear any stale status from a prior add.
+      setFetchStatus(undefined)
+    }
+
+    if (remaining.length === 0) {
+      setFetchedModels(undefined)
+      setSearch("")
+    } else {
+      setFetchedModels(remaining)
+      setSelected(new Set<string>())
+    }
+  }
+
+  function cancelFetch() {
+    setFetchedModels(undefined)
+    setSearch("")
+  }
+
+  // ── Form helpers ────────────────────────────────────────────────────
 
   function goBack() {
     if (props.onBack) {
@@ -197,14 +438,29 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
   }
 
   function addModel() {
-    setForm("models", (v) => [...v, { id: "", name: "" }])
-    setErrors("models", (v) => [...v, {}])
+    setForm("models", (v) => [
+      ...v,
+      { id: "", name: "", reasoning: false, supportsImages: false, modalities: {}, variants: [] },
+    ])
+    setErrors("models", (v) => [...v, { variants: [] }])
   }
 
   function removeModel(index: number) {
     if (form.models.length <= 1) return
     setForm("models", (v) => v.filter((_, i) => i !== index))
     setErrors("models", (v) => v.filter((_, i) => i !== index))
+  }
+
+  function toggleAllReasoning() {
+    const all = form.models.length > 0 && form.models.every((m) => m.reasoning)
+    const target = !all
+    form.models.forEach((_, i) => setForm("models", i, "reasoning", target))
+  }
+
+  function toggleAllImages() {
+    const all = form.models.length > 0 && form.models.every((m) => m.supportsImages)
+    const target = !all
+    form.models.forEach((_, i) => setForm("models", i, "supportsImages", target))
   }
 
   function addHeader() {
@@ -222,10 +478,12 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
     const output = validateCustomProvider({
       form,
       t: language.t,
+      editing: editing(),
       disabledProviders: config().disabled_providers ?? [],
       existingProviderIDs: new Set(Object.keys(provider.providers())),
+      existingEnv: props.existing?.config?.env,
     })
-    setErrors(output.errors)
+    setErrors(reconcile(output.errors))
     return output.result
   }
 
@@ -243,7 +501,8 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
         type: "saveCustomProvider",
         providerID: result.providerID,
         config: result.config,
-        apiKey: result.key,
+        apiKey: apiTouched() ? result.key : undefined,
+        apiKeyChanged: apiTouched(),
       },
       {
         onConnected: () => {
@@ -264,8 +523,11 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
     )
   }
 
+  // ── Render ──────────────────────────────────────────────────────────
+
   return (
     <Dialog
+      size="large"
       title={
         <IconButton
           tabIndex={-1}
@@ -281,43 +543,59 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
         style={{
           display: "flex",
           "flex-direction": "column",
-          gap: "24px",
-          padding: "0 10px 12px 10px",
+          gap: "20px",
+          padding: "0 16px 16px 16px",
           "overflow-y": "auto",
-          "max-height": "60vh",
+          flex: 1,
+          width: "100%",
+          "box-sizing": "border-box",
         }}
       >
-        <div style={{ padding: "0 10px", display: "flex", gap: "16px", "align-items": "center" }}>
+        <div style={{ display: "flex", gap: "16px", "align-items": "center" }}>
           <ProviderIcon id="synthetic" width={20} height={20} />
-          <div style={{ "font-size": "16px", "font-weight": "500", color: "var(--vscode-foreground)" }}>
-            {language.t("provider.custom.title")}
+          <div
+            style={{ "font-size": "var(--kilo-font-size-16)", "font-weight": "500", color: "var(--vscode-foreground)" }}
+          >
+            {editing() ? language.t("provider.custom.edit.title") : language.t("provider.custom.title")}
           </div>
         </div>
 
-        <form
-          onSubmit={save}
-          style={{ padding: "0 10px 24px 10px", display: "flex", "flex-direction": "column", gap: "24px" }}
-        >
-          <div style={{ "font-size": "14px", color: "var(--text-base)" }}>
-            {language.t("provider.custom.description.prefix")}
-            <a
-              href="https://kilo.ai/docs/providers/#custom-provider"
-              onClick={(e) => {
-                e.preventDefault()
-                vscode.postMessage({
-                  type: "openExternal",
-                  url: "https://kilo.ai/docs/providers/#custom-provider",
-                })
-              }}
-            >
-              {language.t("provider.custom.description.link")}
-            </a>
-            {language.t("provider.custom.description.suffix")}
+        <form onSubmit={save} style={{ display: "flex", "flex-direction": "column", gap: "20px" }}>
+          <div style={{ display: "flex", "flex-direction": "column", gap: "10px" }}>
+            <div style={{ "font-size": "var(--kilo-font-size-14)", color: "var(--text-base)" }}>
+              {language.t("provider.custom.description.prefix")}
+              <a
+                href="https://kilo.ai/docs/ai-providers#custom-provider"
+                onClick={(e) => {
+                  e.preventDefault()
+                  vscode.postMessage({
+                    type: "openExternal",
+                    url: "https://kilo.ai/docs/ai-providers#custom-provider",
+                  })
+                }}
+              >
+                {language.t("provider.custom.description.link")}
+              </a>
+              {language.t("provider.custom.description.suffix")}
+            </div>
+            <Show when={editing()}>
+              <div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  icon="edit"
+                  onClick={() => vscode.postMessage(configMessage("global", language.t))}
+                >
+                  {language.t("provider.custom.edit.advanced")}
+                </Button>
+              </div>
+            </Show>
           </div>
 
           <div style={{ display: "flex", "flex-direction": "column", gap: "16px" }}>
             <TextField
-              autofocus
+              autofocus={!editing()}
               label={language.t("provider.custom.field.providerID.label")}
               placeholder={language.t("provider.custom.field.providerID.placeholder")}
               description={language.t("provider.custom.field.providerID.description")}
@@ -325,6 +603,7 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
               onChange={(v) => setForm("providerID", v)}
               validationState={errors.providerID ? "invalid" : undefined}
               error={errors.providerID}
+              disabled={editing()}
             />
             <TextField
               label={language.t("provider.custom.field.name.label")}
@@ -334,11 +613,38 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
               validationState={errors.name ? "invalid" : undefined}
               error={errors.name}
             />
+            <div style={{ display: "flex", "flex-direction": "column", gap: "4px" }}>
+              <label
+                style={{
+                  "font-size": "var(--kilo-font-size-12)",
+                  "font-weight": "500",
+                  color: "var(--text-weak-base)",
+                }}
+              >
+                {language.t("provider.custom.field.package.label")}
+              </label>
+              <Select
+                options={PACKAGE_OPTIONS}
+                current={PACKAGE_OPTIONS.find((option) => option.value === form.npm)}
+                value={(option) => option.value}
+                label={(option) => option.label}
+                onSelect={(option) => {
+                  if (!option) return
+                  setForm("npm", option.value)
+                  setFetchPackage(option.value)
+                }}
+                variant="secondary"
+                triggerVariant="settings"
+              />
+            </div>
             <TextField
               label={language.t("provider.custom.field.baseURL.label")}
               placeholder={language.t("provider.custom.field.baseURL.placeholder")}
               value={form.baseURL}
-              onChange={(v) => setForm("baseURL", v)}
+              onChange={(v) => {
+                setForm("baseURL", v)
+                setFetchURL(v)
+              }}
               validationState={errors.baseURL ? "invalid" : undefined}
               error={errors.baseURL}
             />
@@ -348,60 +654,220 @@ const CustomProviderDialog = (props: CustomProviderDialogProps) => {
               placeholder={language.t("provider.custom.field.apiKey.placeholder")}
               description={language.t("provider.custom.field.apiKey.description")}
               value={form.apiKey}
-              onChange={(v) => setForm("apiKey", v)}
+              onChange={(v) => {
+                const key = !apiTouched() && form.apiKey === MASKED_CUSTOM_PROVIDER_KEY ? v.replace(/^\*+/, "") : v
+                setApiTouched(true)
+                setForm("apiKey", key)
+                setFetchKey(key)
+              }}
             />
           </div>
 
           {/* Models */}
           <div style={{ display: "flex", "flex-direction": "column", gap: "12px" }}>
-            <label style={{ "font-size": "12px", "font-weight": "500", color: "var(--text-weak-base)" }}>
-              {language.t("provider.custom.models.label")}
-            </label>
+            <div
+              style={{
+                display: "flex",
+                "justify-content": "space-between",
+                "align-items": "center",
+                "flex-wrap": "wrap",
+                gap: "8px",
+              }}
+            >
+              <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+                <label
+                  style={{
+                    "font-size": "var(--kilo-font-size-12)",
+                    "font-weight": "500",
+                    color: "var(--text-weak-base)",
+                  }}
+                >
+                  {language.t("provider.custom.models.label")}
+                </label>
+                <Show when={fetching()}>
+                  <Spinner style={{ width: "12px", height: "12px" }} />
+                </Show>
+              </div>
+              <div style={{ display: "flex", gap: "8px", "align-items": "center", "flex-wrap": "wrap" }}>
+                <Button
+                  type="button"
+                  size="small"
+                  variant="ghost"
+                  onClick={toggleAllReasoning}
+                  disabled={form.models.length === 0}
+                >
+                  {language.t("provider.custom.models.toggleReasoning")}
+                </Button>
+                <Button
+                  type="button"
+                  size="small"
+                  variant="ghost"
+                  onClick={toggleAllImages}
+                  disabled={form.models.length === 0}
+                >
+                  {language.t("provider.custom.models.toggleImages")}
+                </Button>
+              </div>
+            </div>
             <For each={form.models}>
               {(m, i) => (
-                <div style={{ display: "flex", gap: "8px", "align-items": "start" }}>
-                  <div style={{ flex: 1 }}>
-                    <TextField
-                      label={language.t("provider.custom.models.id.label")}
-                      hideLabel
-                      placeholder={language.t("provider.custom.models.id.placeholder")}
-                      value={m.id}
-                      onChange={(v) => setForm("models", i(), "id", v)}
-                      validationState={errors.models[i()]?.id ? "invalid" : undefined}
-                      error={errors.models[i()]?.id}
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <TextField
-                      label={language.t("provider.custom.models.name.label")}
-                      hideLabel
-                      placeholder={language.t("provider.custom.models.name.placeholder")}
-                      value={m.name}
-                      onChange={(v) => setForm("models", i(), "name", v)}
-                      validationState={errors.models[i()]?.name ? "invalid" : undefined}
-                      error={errors.models[i()]?.name}
-                    />
-                  </div>
-                  <IconButton
-                    type="button"
-                    icon="trash"
-                    variant="ghost"
-                    onClick={() => removeModel(i())}
-                    disabled={form.models.length <= 1}
-                    aria-label={language.t("provider.custom.models.remove")}
-                    style={{ "margin-top": "6px" }}
-                  />
-                </div>
+                <ModelCard
+                  m={m}
+                  errors={errors.models[i()] ?? {}}
+                  t={language.t}
+                  canRemove={form.models.length > 1}
+                  onChangeId={(v) => setForm("models", i(), "id", v)}
+                  onChangeName={(v) => setForm("models", i(), "name", v)}
+                  onChangeReasoning={(v) => setForm("models", i(), "reasoning", v)}
+                  onChangeSupportsImages={(v) => setForm("models", i(), "supportsImages", v)}
+                  onRemove={() => removeModel(i())}
+                />
               )}
             </For>
             <Button type="button" size="small" variant="ghost" icon="plus-small" onClick={addModel}>
               {language.t("provider.custom.models.add")}
             </Button>
+
+            {/* Fetch error */}
+            <Show when={fetchError()}>
+              {(err) => (
+                <span
+                  style={{ "font-size": "var(--kilo-font-size-12)", color: "var(--vscode-errorForeground, #f14c4c)" }}
+                >
+                  {err()}
+                </span>
+              )}
+            </Show>
+
+            {/* Fetch status (success/info messages) */}
+            <Show when={!fetchError() && fetchStatus()}>
+              {(status) => (
+                <span
+                  style={{
+                    "font-size": "var(--kilo-font-size-12)",
+                    color: "var(--text-weak-base, var(--vscode-descriptionForeground))",
+                  }}
+                >
+                  {status()}
+                </span>
+              )}
+            </Show>
+
+            {/* Model selection picker */}
+            <Show when={fetchedModels()}>
+              {(models) => (
+                <div
+                  style={{
+                    border: "1px solid var(--border-weak-base, var(--vscode-panel-border))",
+                    "border-radius": "6px",
+                    padding: "12px",
+                    display: "flex",
+                    "flex-direction": "column",
+                    gap: "8px",
+                  }}
+                >
+                  {/* Header with count + toggle */}
+                  <div
+                    style={{
+                      display: "flex",
+                      "justify-content": "space-between",
+                      "align-items": "center",
+                    }}
+                  >
+                    <span
+                      style={{
+                        "font-size": "var(--kilo-font-size-12)",
+                        "font-weight": "500",
+                        color: "var(--text-weak-base)",
+                      }}
+                    >
+                      <Show
+                        when={debouncedSearch()}
+                        fallback={language.t("provider.custom.models.fetch.found", {
+                          count: String(models().length),
+                        })}
+                      >
+                        {language.t("provider.custom.models.fetch.showing", {
+                          shown: String(filtered().length),
+                          total: String(models().length),
+                        })}
+                      </Show>
+                    </span>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <Button type="button" size="small" variant="ghost" onClick={selectAll}>
+                        {language.t("provider.custom.models.fetch.selectAll")}
+                      </Button>
+                      <Button type="button" size="small" variant="ghost" onClick={deselectAll}>
+                        {language.t("provider.custom.models.fetch.deselectAll")}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Search */}
+                  <Show when={models().length > 10}>
+                    <TextField
+                      label={language.t("provider.custom.models.fetch.search")}
+                      hideLabel
+                      placeholder={language.t("provider.custom.models.fetch.search")}
+                      value={search()}
+                      onChange={setSearch}
+                    />
+                  </Show>
+
+                  {/* Model list */}
+                  <div
+                    style={{
+                      "max-height": "200px",
+                      "overflow-y": "auto",
+                      display: "flex",
+                      "flex-direction": "column",
+                      gap: "2px",
+                    }}
+                  >
+                    <For each={filtered()}>
+                      {(m) => (
+                        <label
+                          style={{
+                            display: "flex",
+                            "align-items": "center",
+                            gap: "8px",
+                            padding: "4px 2px",
+                            cursor: "pointer",
+                            "font-size": "var(--kilo-font-size-13)",
+                            color: "var(--text-base, var(--vscode-foreground))",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected().has(m.id)}
+                            onChange={() => toggleModel(m.id)}
+                            style={{ cursor: "pointer" }}
+                          />
+                          {m.id}
+                        </label>
+                      )}
+                    </For>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: "8px", "margin-top": "4px" }}>
+                    <Button type="button" size="small" variant="primary" onClick={addSelected} disabled={count() === 0}>
+                      {language.t("provider.custom.models.fetch.add", { count: String(count()) })}
+                    </Button>
+                    <Button type="button" size="small" variant="ghost" onClick={cancelFetch}>
+                      {language.t("common.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Show>
           </div>
 
           {/* Headers */}
           <div style={{ display: "flex", "flex-direction": "column", gap: "12px" }}>
-            <label style={{ "font-size": "12px", "font-weight": "500", color: "var(--text-weak-base)" }}>
+            <label
+              style={{ "font-size": "var(--kilo-font-size-12)", "font-weight": "500", color: "var(--text-weak-base)" }}
+            >
               {language.t("provider.custom.headers.label")}
             </label>
             <For each={form.headers}>

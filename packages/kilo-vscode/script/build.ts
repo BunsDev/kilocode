@@ -2,12 +2,19 @@
 import { $ } from "bun"
 import { join } from "node:path"
 import { existsSync, mkdirSync, rmSync, chmodSync } from "node:fs"
+import {
+  copyKiloSandboxWorker,
+  copySandboxResources,
+  copyTreeSitterResources,
+} from "../src/services/cli-backend/cli-resources"
+import { ensureFfmpegForTarget } from "./ffmpeg-helper"
 
 const packageJsonPath = join(import.meta.dir, "..", "package.json")
 const packageJson = await Bun.file(packageJsonPath).json()
 const version = process.env.KILO_VERSION ? process.env.KILO_VERSION : packageJson.version
+const prerelease = process.env.KILO_PRE_RELEASE === "true"
 
-console.log(`Building VSCode extension version: ${version}`)
+console.log(`Building VSCode extension version: ${version}${prerelease ? " (pre-release)" : ""}`)
 
 if (packageJson.version !== version) {
   console.log(`Updating package.json version from ${packageJson.version} to ${version}`)
@@ -36,10 +43,9 @@ const targets = [
 const binDir = join(import.meta.dir, "..", "bin")
 const distDir = join(import.meta.dir, "..", "dist")
 const outDir = join(import.meta.dir, "..", "out")
-const outDirProd = join(import.meta.dir, "..", "out", "prod")
 
 console.log("\n🧹 Cleaning up directories...")
-for (const dir of [binDir, distDir, outDir, outDirProd]) {
+for (const dir of [binDir, distDir, outDir]) {
   if (existsSync(dir)) {
     rmSync(dir, { recursive: true, force: true })
     console.log(`  ✓ Cleaned ${dir}`)
@@ -48,7 +54,6 @@ for (const dir of [binDir, distDir, outDir, outDirProd]) {
 
 mkdirSync(outDir, { recursive: true })
 mkdirSync(distDir, { recursive: true })
-mkdirSync(outDirProd, { recursive: true })
 
 console.log("\n🔄 Rebuilding SDK types (ensures dist/ is in sync with server API)...")
 await $`bun run --cwd ${join(import.meta.dir, "..", "..", "sdk", "js")} build`
@@ -75,6 +80,9 @@ for (const config of targets) {
 
   console.log(`  📥 Copying binary from ${config.cliDir}/bin/${config.binary}...`)
   await $`cp ${sourceBinary} ${targetBinary}`
+  await copyTreeSitterResources(sourceBinary, targetBinary)
+  await copySandboxResources(sourceBinary, targetBinary)
+  await copyKiloSandboxWorker(sourceBinary, targetBinary)
 
   if (config.binary !== "kilo.exe") {
     chmodSync(targetBinary, 0o755)
@@ -82,20 +90,18 @@ for (const config of targets) {
 
   console.log(`  ✅ Binary ready at ${targetBinary}`)
 
-  console.log(`  📦 Packaging .vsix for ${config.target}...`)
+  console.log("Adding bundled FFmpeg helper...")
+  await ensureFfmpegForTarget(config.target, binDir)
+
+  console.log(`  📦 Packaging .vsix for ${config.target}${prerelease ? " (pre-release)" : ""}...`)
   const vsixPath = join(outDir, `kilo-vscode-${config.target}.vsix`)
-  await $`vsce package --pre-release --no-dependencies --skip-license --target ${config.target} -o ${vsixPath}`.env({
+  const args = ["--no-dependencies", "--skip-license", "--target", config.target, "-o", vsixPath]
+  if (prerelease) args.push("--pre-release")
+  await $`vsce package ${args}`.env({
     ...process.env,
     npm_config_ignore_scripts: "true",
   })
   console.log(`  ✅ Created ${vsixPath}`)
-
-  const prodVsixPath = join(outDirProd, `kilo-vscode-${config.target}.vsix`)
-  await $`vsce package --no-dependencies --skip-license --target ${config.target} -o ${prodVsixPath}`.env({
-    ...process.env,
-    npm_config_ignore_scripts: "true",
-  })
-  console.log(`  ✅ Created ${prodVsixPath}`)
 }
 
 console.log("\n✨ All VSIX packages built successfully!")
